@@ -25,20 +25,13 @@ This document outlines a series of tasks designed to help students understand da
 
 ## Level 2: Intermediate (B-Tree & Query Logic)
 
-### Task 2.1: Implement Internal Node Splitting
+### Task 2.1: Implement Internal Node Splitting (COMPLETED)
 **Goal**: Currently, the database prints "Internal split not implemented." Implement the logic to split internal nodes when they become full.
-- **Principle**: B-Tree Structural Integrity. For a B-Tree to remain balanced, splits must propagate from leaves up to the root.
-- **Technical Hints**:
-    - Create a function `internal_node_split_and_insert`.
-    - When an internal node is full, move half the keys/children to a new page and insert the median key into the parent.
-    - Use the `node_parent` pointer to navigate up the tree.
+- **Status**: **Done**. The B-Tree now supports recursive splitting from leaf to root, allowing it to grow indefinitely.
 
-### Task 2.2: Basic `WHERE` Clause for `SELECT`
+### Task 2.2: Basic `WHERE` Clause for `SELECT` (COMPLETED)
 **Goal**: Modify the `select` command to support a single equality filter, e.g., `select where id 5`.
-- **Principle**: Query Execution & Predicate Evaluation. Filtering reduces the amount of data returned to the user and is the first step toward a query optimizer.
-- **Technical Hints**:
-    - Use `strtok` to parse the `where` keyword and the target column/value.
-    - Inside the `select` loop, compare the deserialized value of the target field with the user's input before printing.
+- **Status**: **Done**. Implemented as `select <key>`, utilizing the B-Tree's `find_node` for efficient $O(\log n)$ lookups.
 
 ### Task 2.3: The `update` Command
 **Goal**: Implement an `update` command to modify existing records, e.g., `update 1 new_name`.
@@ -46,6 +39,7 @@ This document outlines a series of tasks designed to help students understand da
 - **Technical Hints**:
     - Use `find_node` to locate the `Cursor` for the specific ID.
     - Once the leaf cell is found, use `serialize_field` to overwrite the specific bytes in the page buffer.
+    - **Remember to call `mark_page_dirty`!**
 
 ---
 
@@ -66,3 +60,10 @@ This document outlines a series of tasks designed to help students understand da
     - Create a new B-Tree where the "value" stored in the leaf node is the Primary Key of the main table.
     - Every time a row is inserted into the main table, you must also insert an entry into the index B-Tree.
     - Implement a "Fast Select" that uses this index to find records without a full table scan.
+
+### Task 3.3: Durability (Write-Ahead Log)
+**Goal**: Ensure data is not lost if the program crashes before `pager_flush` is called.
+- **Principle**: Atomicity and Durability (ACID).
+- **Technical Hints**:
+    - Before modifying a page in memory, write the change to a separate `.log` file.
+    - On startup (`db_open`), check if a log file exists. If so, replay the changes to restore the database state.

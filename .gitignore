@@ -10,7 +10,6 @@ db
 # Database Files
 *.sqlite
 *.db
-mydb.sqlite
 
 # System Files
 .DS_Store
@@ -22,3 +21,4 @@ Thumbs.db
 output_insert.txt
 output_select.txt
 *.log
+*.sh

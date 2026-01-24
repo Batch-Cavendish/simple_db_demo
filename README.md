@@ -12,22 +12,23 @@ The primary objective of SimpleDB is to provide a transparent and understandable
 
 ## Architecture
 
-SimpleDB follows a classic database architecture:
+SimpleDB follows a classic, modular database architecture:
 
-1.  **REPL (Read-Eval-Print Loop)**: The front-end interface that parses user input and translates it into database commands.
-2.  **Schema Manager**: Handles the definition and persistence of table structures. The schema is stored in "Page 0" of the database file to ensure the database can self-describe upon reopening.
-3.  **B-Tree Storage Engine**: Data is organized in a B-Tree structure.
-    -   **Leaf Nodes**: Store the actual data rows.
-    -   **Internal Nodes**: Store keys and pointers to child nodes to facilitate efficient searching.
-    -   **Splitting**: When a leaf node exceeds its 4KB capacity, it splits into two, maintaining the tree's balance.
-4.  **Pager**: Manages a cache of 4KB pages. It interacts directly with the filesystem using POSIX system calls (`open`, `lseek`, `read`, `write`).
-5.  **Serialization Layer**: Converts C structures and dynamic field values into a compact binary format for disk storage.
+1.  **Compiler (Parser)**: The `prepare_statement` function parses raw text input (SQL-like) and converts it into an internal `Statement` object. This separates syntax analysis from execution logic.
+2.  **Virtual Machine (VM)**: The `execute_statement` function executes the bytecode-like `Statement` on the database engine.
+3.  **Schema Manager**: Handles the definition and persistence of table structures in "Page 0," making the database self-describing.
+4.  **B-Tree Storage Engine**: Data is organized in a B-Tree structure for $O(\log n)$ access.
+    -   **Leaf Nodes**: Store data rows.
+    -   **Internal Nodes**: Faciliate navigation and scaling.
+    -   **Splitting**: Automatically handles node splits (both leaf and internal) to keep the tree balanced as it grows.
+5.  **Buffer Pool (Pager)**: Manages a cache of pages in memory with **LRU (Least Recently Used)** eviction and dirty-page tracking to minimize disk I/O.
+6.  **Serialization Layer**: Converts C structures into compact binary formats.
 
 ## Implementation Technologies
 
 -   **Language**: C11 (ISO/IEC 9899:2011).
 -   **Storage Format**: Custom binary format using 4096-byte pages.
--   **System Interface**: POSIX standard library for file descriptor management and memory allocation.
+-   **System Interface**: POSIX standard library.
 -   **Build System**: GNU Makefile.
 
 ## Usage
@@ -64,15 +65,20 @@ db > insert 2 user2 user2@example.com
 ```
 
 #### 3. Select Data
-Retrieve all records from the table.
+Retrieve all records (Full Table Scan) or a specific record by key (Index Lookup).
 ```sql
+-- Full Table Scan
 db > select
 (1, user1, user1@example.com)
 (2, user2, user2@example.com)
+
+-- Index Lookup (O(log n))
+db > select 1
+(1, user1, user1@example.com)
 ```
 
 #### 4. Delete Data
-Delete a record by its primary key (the first field defined).
+Delete a record by its primary key. Works with both Integer and Text primary keys (via hashing).
 ```sql
 db > delete 1
 ```
@@ -85,6 +91,8 @@ db > .exit
 
 ## Educational Insights
 
--   **Why Pages?**: Databases use fixed-size pages (usually 4KB or 8KB) to align with hardware sector sizes, minimizing the number of expensive disk I/O operations.
--   **Why B-Trees?**: B-Trees are preferred over binary trees or hash maps because they are "disk-aware." Their high branching factor reduces the tree height, meaning fewer pages need to be loaded from disk to find a specific key.
--   **Why Page 0?**: Storing the schema at a fixed location (Page 0) allows the database to boot without external metadata, making the database file truly portable.
+-   **Compiler vs. VM**: By separating `prepare_statement` from `execute_statement`, the code demonstrates how databases decouple parsing ("what to do") from execution ("how to do it").
+-   **Buffer Pool Management**: The `Pager` implements an LRU eviction policy. It "pins" pages during use to prevent corruption and only writes "dirty" (modified) pages back to disk, teaching the importance of I/O optimization.
+-   **B-Tree Internals**: The project now supports full B-Tree growth, including internal node splitting, demonstrating how databases maintain performance ($O(\log n)$) regardless of data size.
+-   **Table Scan vs. Index Lookup**: The `select` command demonstrates the massive performance difference between scanning every page (default) and traversing the tree to find a specific key (`select <id>`).
+-   **Hashing**: Text primary keys are hashed to `uint32_t` for B-Tree indexing, showing how databases handle non-numeric keys in index structures.
