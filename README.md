@@ -1,6 +1,6 @@
 # SimpleDB: An Educational C Database
 
-SimpleDB is a lightweight, disk-based database engine written in C11. It is designed as an educational resource to demonstrate the core components of a database system, including a B-Tree storage engine, a page-based memory manager (Pager), and dynamic schema management.
+SimpleDB is a lightweight, disk-based database engine written in C23. It is designed as an educational resource to demonstrate the core components of a database system, including a B-Tree storage engine, a page-based memory manager (Pager), and dynamic schema management.
 
 ## Project Goals
 
