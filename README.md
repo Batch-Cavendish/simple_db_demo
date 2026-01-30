@@ -24,6 +24,18 @@ SimpleDB follows a classic, modular database architecture:
 5.  **Buffer Pool (Pager)**: Manages a cache of pages in memory with **LRU (Least Recently Used)** eviction and dirty-page tracking to minimize disk I/O.
 6.  **Serialization Layer**: Converts C structures into compact binary formats.
 
+## File Structure
+
+The codebase is organized into modular components:
+
+- `include/common.h`: Shared constants and core type definitions.
+- `include/pager.h` / `src/pager.c`: Disk I/O management and page-based buffer pool.
+- `include/btree.h` / `src/btree.c`: B-Tree implementation and node manipulation.
+- `include/table.h` / `src/table.c`: High-level database and cursor management.
+- `include/statement.h` / `src/statement.c`: Statement preparation and execution logic.
+- `include/schema.h` / `src/schema.c`: Row serialization and schema-related utility functions.
+- `src/main.c`: Main REPL loop and CLI interface.
+
 ## Implementation Technologies
 
 -   **Language**: C11 (ISO/IEC 9899:2011).
