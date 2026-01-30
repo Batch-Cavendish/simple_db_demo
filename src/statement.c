@@ -1,4 +1,3 @@
-#define _DEFAULT_SOURCE
 #include "statement.h"
 #include "btree.h"
 #include "schema.h"
@@ -10,7 +9,7 @@ static PrepareResult prepare_insert(char *line, Statement *statement, Schema *sc
     statement->type = STATEMENT_INSERT;
     char *token = strtok(line, " "); // Skip "insert" keyword
     token = strtok(NULL, " ");
-    
+
     for (uint32_t i = 0; i < schema->num_fields; i++) {
         if (token == NULL) return PREPARE_SYNTAX_ERROR;
         if (schema->fields[i].type == FIELD_INT) {
@@ -31,16 +30,16 @@ static PrepareResult prepare_create(char *line, Statement *statement) {
     statement->type = STATEMENT_CREATE_TABLE;
     statement->new_schema.num_fields = 0;
     statement->new_schema.row_size = 0;
-    
+
     char *token = strtok(line, " "); // Skip "create"
     token = strtok(NULL, " ");
-    
+
     while (token) {
         Field *f = &statement->new_schema.fields[statement->new_schema.num_fields++];
         strncpy(f->name, token, FIELD_NAME_MAX - 1);
         token = strtok(NULL, " ");
         if (token == NULL) return PREPARE_SYNTAX_ERROR;
-        
+
         if (strcmp(token, "int") == 0) {
             f->type = FIELD_INT;
             f->size = 4;
@@ -67,7 +66,7 @@ PrepareResult prepare_statement(char *line, Statement *statement, Schema *schema
             statement->select_whole_table = true;
             return PREPARE_SUCCESS;
         }
-        
+
         statement->select_whole_table = false;
         if (schema->num_fields > 0 && schema->fields[0].type == FIELD_TEXT) {
             statement->select_key = hash_string(token);
@@ -81,7 +80,7 @@ PrepareResult prepare_statement(char *line, Statement *statement, Schema *schema
         char *token = strtok(line, " "); // skip "delete"
         token = strtok(NULL, " ");
         if (token == NULL) return PREPARE_SYNTAX_ERROR;
-        
+
         if (schema->num_fields > 0 && schema->fields[0].type == FIELD_TEXT) {
             statement->delete_id = hash_string(token);
         } else {
@@ -98,7 +97,7 @@ PrepareResult prepare_statement(char *line, Statement *statement, Schema *schema
 static ExecuteResult execute_insert(Statement *statement, Table *t) {
     Cursor *c = find_node(t, t->root_page_num, statement->insert_values[0]);
     leaf_node_insert(c, statement->insert_values[0], statement);
-    
+
     // Free strings after insertion
     for (uint32_t i = 0; i < t->schema.num_fields; i++) {
         if (t->schema.fields[i].type == FIELD_TEXT)
@@ -126,8 +125,8 @@ static ExecuteResult execute_select(Statement *statement, Table *t) {
             c->cell_num = 0;
             continue;
         }
-        
-        // If selecting by key, verify we match. 
+
+        // If selecting by key, verify we match.
         if (!statement->select_whole_table) {
             uint32_t key = *leaf_node_key(node, c->cell_num, &t->schema);
             if (key != statement->select_key) break;
