@@ -8,10 +8,10 @@
 static PrepareResult prepare_insert(char *line, Statement *statement, Schema *schema) {
     statement->type = STATEMENT_INSERT;
     char *token = strtok(line, " "); // Skip "insert" keyword
-    token = strtok(NULL, " ");
+    token = strtok(nullptr, " ");
 
     for (uint32_t i = 0; i < schema->num_fields; i++) {
-        if (token == NULL) return PREPARE_SYNTAX_ERROR;
+        if (token == nullptr) return PREPARE_SYNTAX_ERROR;
         if (schema->fields[i].type == FIELD_INT) {
             statement->insert_values[i] = atoi(token);
         } else {
@@ -21,7 +21,7 @@ static PrepareResult prepare_insert(char *line, Statement *statement, Schema *sc
                 statement->insert_values[i] = hash_string(token);
             }
         }
-        token = strtok(NULL, " ");
+        token = strtok(nullptr, " ");
     }
     return PREPARE_SUCCESS;
 }
@@ -32,13 +32,13 @@ static PrepareResult prepare_create(char *line, Statement *statement) {
     statement->new_schema.row_size = 0;
 
     char *token = strtok(line, " "); // Skip "create"
-    token = strtok(NULL, " ");
+    token = strtok(nullptr, " ");
 
     while (token) {
         Field *f = &statement->new_schema.fields[statement->new_schema.num_fields++];
         strncpy(f->name, token, FIELD_NAME_MAX - 1);
-        token = strtok(NULL, " ");
-        if (token == NULL) return PREPARE_SYNTAX_ERROR;
+        token = strtok(nullptr, " ");
+        if (token == nullptr) return PREPARE_SYNTAX_ERROR;
 
         if (strcmp(token, "int") == 0) {
             f->type = FIELD_INT;
@@ -49,7 +49,7 @@ static PrepareResult prepare_create(char *line, Statement *statement) {
         }
         f->offset = statement->new_schema.row_size;
         statement->new_schema.row_size += f->size;
-        token = strtok(NULL, " ");
+        token = strtok(nullptr, " ");
     }
     return PREPARE_SUCCESS;
 }
@@ -61,8 +61,8 @@ PrepareResult prepare_statement(char *line, Statement *statement, Schema *schema
     if (strncmp(line, "select", 6) == 0) {
         statement->type = STATEMENT_SELECT;
         char *token = strtok(line, " "); // skip "select"
-        token = strtok(NULL, " ");
-        if (token == NULL) {
+        token = strtok(nullptr, " ");
+        if (token == nullptr) {
             statement->select_whole_table = true;
             return PREPARE_SUCCESS;
         }
@@ -78,8 +78,8 @@ PrepareResult prepare_statement(char *line, Statement *statement, Schema *schema
     if (strncmp(line, "delete", 6) == 0) {
         statement->type = STATEMENT_DELETE;
         char *token = strtok(line, " "); // skip "delete"
-        token = strtok(NULL, " ");
-        if (token == NULL) return PREPARE_SYNTAX_ERROR;
+        token = strtok(nullptr, " ");
+        if (token == nullptr) return PREPARE_SYNTAX_ERROR;
 
         if (schema->num_fields > 0 && schema->fields[0].type == FIELD_TEXT) {
             statement->delete_id = hash_string(token);

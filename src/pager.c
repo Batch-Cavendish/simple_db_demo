@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 
 Pager *pager_open(const char *filename) {
     int fd = open(filename, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
@@ -19,7 +18,7 @@ Pager *pager_open(const char *filename) {
     p->num_pages = len / PAGE_SIZE;
     p->timer = 0;
     for (int i = 0; i < TABLE_MAX_PAGES; i++) {
-        p->pages[i] = NULL;
+        p->pages[i] = nullptr;
         p->last_used[i] = 0;
         p->is_dirty[i] = false;
         p->pinned[i] = 0;
@@ -55,7 +54,7 @@ void mark_page_dirty(Pager *p, uint32_t pg) {
 
 void *get_page(Pager *p, uint32_t pg) {
     p->timer++;
-    if (p->pages[pg] == NULL) {
+    if (p->pages[pg] == nullptr) {
         uint32_t pages_in_memory = 0;
         for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
             if (p->pages[i]) pages_in_memory++;
@@ -70,7 +69,7 @@ void *get_page(Pager *p, uint32_t pg) {
                     victim = i;
                 }
             }
-            
+
             if (victim == 0xFFFFFFFF) {
                 printf("Buffer pool full and all pages are pinned! Cannot load page %d\n", pg);
                 exit(EXIT_FAILURE);
@@ -78,7 +77,7 @@ void *get_page(Pager *p, uint32_t pg) {
 
             pager_flush(p, victim);
             free(p->pages[victim]);
-            p->pages[victim] = NULL;
+            p->pages[victim] = nullptr;
         }
 
         void *page = malloc(PAGE_SIZE);
