@@ -14,13 +14,13 @@ $(TARGET): $(OBJ)
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# 标准清理：只删除中间文件
+# standard clean: only delete intermediate files
 clean:
 	rm -f $(OBJ)
 
-# 彻底清理：删除所有生成文件
+# perform a full clean, deleting all generated files
 distclean: clean
 	rm -f $(TARGET)
 
-# make clean      # 快速清理，保留可执行文件（用于重新编译）
-# make distclean  # 完全清理（用于发布或测试完整构建）
+# make clean      # quick clean, keep executable (for recompilation)
+# make distclean  # full clean (for publishing or testing full build)
