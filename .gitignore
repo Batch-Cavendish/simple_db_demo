@@ -23,6 +23,7 @@ output_insert.txt
 output_select.txt
 *.log
 *.sh
+/.cache
 
 # AI Files
 ROADMAP.md

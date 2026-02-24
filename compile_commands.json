@@ -1,0 +1,32 @@
+[
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/main.c -o src/main.o",
+        "file": "/home/lorisay/simple_db_demo/src/main.c"
+    },
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/btree.c -o src/btree.o",
+        "file": "/home/lorisay/simple_db_demo/src/btree.c"
+    },
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/pager.c -o src/pager.o",
+        "file": "/home/lorisay/simple_db_demo/src/pager.c"
+    },
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/schema.c -o src/schema.o",
+        "file": "/home/lorisay/simple_db_demo/src/schema.c"
+    },
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/statement.c -o src/statement.o",
+        "file": "/home/lorisay/simple_db_demo/src/statement.c"
+    },
+    {
+        "directory": "/home/lorisay/simple_db_demo/",
+        "command": "gcc -std=c23 -Wall -Wextra -Wpedantic -Iinclude -c src/table.c -o src/table.o",
+        "file": "/home/lorisay/simple_db_demo/src/table.c"
+    }
+]
