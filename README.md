@@ -66,33 +66,33 @@ Start the database by specifying a database file:
 #### 1. Create a Table
 Define the fields of your table. Currently, SimpleDB supports one table per file.
 ```sql
-db > create id int username text email text
+db > CREATE TABLE users (id INT, username TEXT, email TEXT);
 ```
 
 #### 2. Insert Data
 Insert values corresponding to the defined schema.
 ```sql
-db > insert 1 user1 user1@example.com
-db > insert 2 user2 user2@example.com
+db > INSERT INTO users VALUES (1, 'user1', 'user1@example.com');
+db > INSERT INTO users VALUES (2, 'user2', 'user2@example.com');
 ```
 
 #### 3. Select Data
 Retrieve all records (Full Table Scan) or a specific record by key (Index Lookup).
 ```sql
 -- Full Table Scan
-db > select
+db > SELECT * FROM users;
 (1, user1, user1@example.com)
 (2, user2, user2@example.com)
 
 -- Index Lookup (O(log n))
-db > select 1
+db > SELECT * FROM users WHERE id = 1;
 (1, user1, user1@example.com)
 ```
 
 #### 4. Delete Data
 Delete a record by its primary key. Works with both Integer and Text primary keys (via hashing).
 ```sql
-db > delete 1
+db > DELETE FROM users WHERE id = 1;
 ```
 
 #### 5. Exit
