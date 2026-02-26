@@ -94,3 +94,19 @@ void *get_page(Pager *p, uint32_t pg) {
   pin_page(p, pg);
   return p->pages[pg];
 }
+
+void pager_close(Pager *p) {
+  for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
+    if (p->pages[i]) {
+      pager_flush(p, i);
+      free(p->pages[i]);
+      p->pages[i] = nullptr;
+    }
+  }
+  int result = close(p->file_descriptor);
+  if (result == -1) {
+    printf("Error closing db file.\n");
+    exit(EXIT_FAILURE);
+  }
+  free(p);
+}

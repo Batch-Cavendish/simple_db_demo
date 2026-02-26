@@ -87,6 +87,15 @@ static PrepareResult prepare_insert(char *line, Statement *statement,
       statement->insert_values[i] = atoi(token);
       free(token);
     } else {
+      if (strlen(token) >= schema->fields[i].size) {
+        free(token);
+        // Free already allocated strings
+        for (uint32_t j = 0; j < i; j++) {
+          if (schema->fields[j].type == FIELD_TEXT)
+            free(statement->insert_strings[j]);
+        }
+        return PREPARE_STRING_TOO_LONG;
+      }
       statement->insert_strings[i] = token; // Already malloc'd
       if (i == 0) {
         statement->insert_values[i] = hash_string(token);
@@ -131,9 +140,19 @@ static PrepareResult prepare_create(char *line, Statement *statement) {
       break;
     }
 
+    if (statement->new_schema.num_fields >= MAX_FIELDS) {
+      free(name);
+      return PREPARE_SYNTAX_ERROR; // Or a more specific error
+    }
+
     Field *f =
         &statement->new_schema.fields[statement->new_schema.num_fields++];
+    if (strlen(name) >= FIELD_NAME_MAX) {
+      free(name);
+      return PREPARE_SYNTAX_ERROR;
+    }
     strncpy(f->name, name, FIELD_NAME_MAX - 1);
+    f->name[FIELD_NAME_MAX - 1] = '\0';
     free(name);
 
     char *type = consume_token(&curr);
@@ -258,25 +277,142 @@ static PrepareResult prepare_delete(char *line, Statement *statement,
   return PREPARE_SUCCESS;
 }
 
-PrepareResult prepare_statement(char *line, Statement *statement,
-                                Schema *schema) {
+static PrepareResult prepare_update(char *line, Statement *statement,
+                                    Schema *schema) {
+  statement->type = STATEMENT_UPDATE;
+  for (int i = 0; i < MAX_FIELDS; i++)
+    statement->update_mask[i] = false;
+
+  char *curr = line;
+  if (!expect_token(&curr, "update"))
+    return PREPARE_UNRECOGNIZED_STATEMENT;
+  free(consume_token(&curr)); // Skip table name
+
+  if (!expect_token(&curr, "set"))
+    return PREPARE_SYNTAX_ERROR;
+
+  while (true) {
+    char *name = consume_token(&curr);
+    if (name == nullptr)
+      return PREPARE_SYNTAX_ERROR;
+
+    int field_idx = -1;
+    for (uint32_t i = 0; i < schema->num_fields; i++) {
+      if (strcasecmp(name, schema->fields[i].name) == 0) {
+        field_idx = i;
+        break;
+      }
+    }
+    free(name);
+
+    if (field_idx == -1)
+      return PREPARE_SYNTAX_ERROR;
+
+    if (!expect_token(&curr, "="))
+      return PREPARE_SYNTAX_ERROR;
+
+    char *val = consume_token(&curr);
+    if (val == nullptr)
+      return PREPARE_SYNTAX_ERROR;
+
+    statement->update_mask[field_idx] = true;
+    if (schema->fields[field_idx].type == FIELD_INT) {
+      statement->insert_values[field_idx] = atoi(val);
+      free(val);
+    } else {
+      if (strlen(val) >= schema->fields[field_idx].size) {
+        free(val);
+        // Free strings already in this statement
+        for (int i = 0; i < MAX_FIELDS; i++) {
+          if (statement->update_mask[i] && schema->fields[i].type == FIELD_TEXT &&
+              statement->insert_strings[i]) {
+            free(statement->insert_strings[i]);
+            statement->insert_strings[i] = nullptr;
+          }
+        }
+        return PREPARE_STRING_TOO_LONG;
+      }
+      statement->insert_strings[field_idx] = val;
+    }
+
+    char *next = consume_token(&curr);
+    if (next == nullptr)
+      return PREPARE_SYNTAX_ERROR;
+    if (strcasecmp(next, "where") == 0) {
+      free(next);
+      break;
+    }
+    if (strcmp(next, ",") != 0) {
+      free(next);
+      return PREPARE_SYNTAX_ERROR;
+    }
+    free(next);
+  }
+
+  free(consume_token(&curr)); // Skip column name (assume it's the PK)
+  if (!expect_token(&curr, "="))
+    return PREPARE_SYNTAX_ERROR;
+
+  char *val = consume_token(&curr);
+  if (val == nullptr)
+    return PREPARE_SYNTAX_ERROR;
+
+  if (schema->num_fields > 0 && schema->fields[0].type == FIELD_TEXT) {
+    statement->update_key = hash_string(val);
+  } else {
+    statement->update_key = atoi(val);
+  }
+  free(val);
+
+  char *semi = consume_token(&curr);
+  if (semi)
+    free(semi);
+
+  return PREPARE_SUCCESS;
+}
+
+PrepareResult prepare_statement(char *line, Statement *statement, Table *t) {
+  if (strncasecmp(line, "create", 6) == 0) {
+    if (t->has_schema)
+      return PREPARE_TABLE_ALREADY_EXISTS;
+    return prepare_create(line, statement);
+  }
+
+  if (!t->has_schema)
+    return PREPARE_NO_SCHEMA;
+
   if (strncasecmp(line, "insert", 6) == 0) {
-    return prepare_insert(line, statement, schema);
+    return prepare_insert(line, statement, &t->schema);
   }
   if (strncasecmp(line, "select", 6) == 0) {
-    return prepare_select(line, statement, schema);
+    return prepare_select(line, statement, &t->schema);
   }
   if (strncasecmp(line, "delete", 6) == 0) {
-    return prepare_delete(line, statement, schema);
+    return prepare_delete(line, statement, &t->schema);
   }
-  if (strncasecmp(line, "create", 6) == 0) {
-    return prepare_create(line, statement);
+  if (strncasecmp(line, "update", 6) == 0) {
+    return prepare_update(line, statement, &t->schema);
   }
   return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
 static ExecuteResult execute_insert(Statement *statement, Table *t) {
   Cursor *c = find_node(t, t->root_page_num, statement->insert_values[0]);
+  void *node = get_page(t->pager, c->page_num);
+  if (c->cell_num < *leaf_node_num_cells(node)) {
+    uint32_t key_at_index = *leaf_node_key(node, c->cell_num, &t->schema);
+    if (key_at_index == statement->insert_values[0]) {
+      // Free strings
+      for (uint32_t i = 0; i < t->schema.num_fields; i++) {
+        if (t->schema.fields[i].type == FIELD_TEXT)
+          free(statement->insert_strings[i]);
+      }
+      free(c);
+      unpin_page_all(t->pager);
+      return EXECUTE_DUPLICATE_KEY;
+    }
+  }
+
   leaf_node_insert(c, statement->insert_values[0], statement);
 
   // Free strings after insertion
@@ -341,22 +477,66 @@ static ExecuteResult execute_delete(Statement *statement, Table *t) {
   uint32_t id = statement->delete_id;
   Cursor *c = find_node(t, t->root_page_num, id);
   void *node = get_page(t->pager, c->page_num);
+  ExecuteResult res = EXECUTE_SUCCESS;
   if (c->cell_num < *leaf_node_num_cells(node) &&
       *leaf_node_key(node, c->cell_num, &t->schema) == id) {
     leaf_node_delete(c);
     printf("Deleted.\n");
   } else {
-    printf("Key not found.\n");
+    res = EXECUTE_KEY_NOT_FOUND;
   }
   free(c);
   unpin_page_all(t->pager);
-  return EXECUTE_SUCCESS;
+  return res;
 }
 
 static ExecuteResult execute_create(Statement *statement, Table *t) {
   t->schema = statement->new_schema;
   t->has_schema = true;
   return EXECUTE_SUCCESS;
+}
+
+static ExecuteResult execute_update(Statement *statement, Table *t) {
+  Cursor *c = find_node(t, t->root_page_num, statement->update_key);
+  void *node = get_page(t->pager, c->page_num);
+  ExecuteResult res = EXECUTE_SUCCESS;
+  if (c->cell_num < *leaf_node_num_cells(node) &&
+      *leaf_node_key(node, c->cell_num, &t->schema) == statement->update_key) {
+    void *val = leaf_node_value(node, c->cell_num, &t->schema);
+    for (uint32_t i = 0; i < t->schema.num_fields; i++) {
+      if (statement->update_mask[i]) {
+        if (t->schema.fields[i].type == FIELD_INT) {
+          serialize_field(&t->schema, i, &statement->insert_values[i], val);
+        } else {
+          serialize_field(&t->schema, i, statement->insert_strings[i], val);
+          // Special case: if we update the first field and it's a TEXT, we
+          // should update the key too
+          if (i == 0) {
+            *leaf_node_key(node, c->cell_num, &t->schema) =
+                hash_string(statement->insert_strings[i]);
+          }
+        }
+        // If we update the first field and it's an INT, update the key
+        if (i == 0 && t->schema.fields[i].type == FIELD_INT) {
+          *leaf_node_key(node, c->cell_num, &t->schema) =
+              statement->insert_values[i];
+        }
+      }
+    }
+    mark_page_dirty(t->pager, c->page_num);
+    printf("Updated.\n");
+  } else {
+    res = EXECUTE_KEY_NOT_FOUND;
+  }
+
+  // Free strings
+  for (uint32_t i = 0; i < t->schema.num_fields; i++) {
+    if (t->schema.fields[i].type == FIELD_TEXT && statement->update_mask[i])
+      free(statement->insert_strings[i]);
+  }
+  free(c);
+  unpin_page_all(t->pager);
+  return res;
 }
 
 ExecuteResult execute_statement(Statement *statement, Table *t) {
@@ -367,6 +547,8 @@ ExecuteResult execute_statement(Statement *statement, Table *t) {
     return execute_select(statement, t);
   case STATEMENT_DELETE:
     return execute_delete(statement, t);
+  case STATEMENT_UPDATE:
+    return execute_update(statement, t);
   case STATEMENT_CREATE_TABLE:
     return execute_create(statement, t);
   }

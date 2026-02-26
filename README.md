@@ -38,67 +38,74 @@ The codebase is organized into modular components:
 
 ## Implementation Technologies
 
--   **Language**: C11 (ISO/IEC 9899:2011).
+-   **Language**: C23 (ISO/IEC 9899:2024).
+-   **Key Features**: `auto` type inference, standardized attributes (`[[nodiscard]]`), fixed-underlying-type enums, and `nullptr`.
 -   **Storage Format**: Custom binary format using 4096-byte pages.
--   **System Interface**: POSIX standard library.
 -   **Build System**: GNU Makefile.
 
 ## Usage
 
-### Building the Project
+### Quick Start
 
-To compile SimpleDB, simply run:
+1. **Build the project**:
+   ```bash
+   make
+   ```
 
-```bash
-make
-```
+2. **Run the database**:
+   ```bash
+   make run
+   # Or manually: ./db mydb.db
+   ```
 
-### Running the Database
+3. **Run tests**:
+   ```bash
+   make test
+   ```
 
-Start the database by specifying a database file:
-
-```bash
-./db mydb.sqlite
-```
-
-### Supported Commands
+### Supported SQL Commands
 
 #### 1. Create a Table
-Define the fields of your table. Currently, SimpleDB supports one table per file.
+Currently, SimpleDB supports one table per database file. The first column defined is automatically the primary key.
 ```sql
-db > CREATE TABLE users (id INT, username TEXT, email TEXT);
+db > CREATE TABLE users (id INT, username TEXT);
 ```
 
 #### 2. Insert Data
-Insert values corresponding to the defined schema.
 ```sql
-db > INSERT INTO users VALUES (1, 'user1', 'user1@example.com');
-db > INSERT INTO users VALUES (2, 'user2', 'user2@example.com');
+db > INSERT INTO users VALUES (1, 'Alice');
+db > INSERT INTO users VALUES (2, 'Bob');
 ```
 
 #### 3. Select Data
-Retrieve all records (Full Table Scan) or a specific record by key (Index Lookup).
 ```sql
 -- Full Table Scan
 db > SELECT * FROM users;
-(1, user1, user1@example.com)
-(2, user2, user2@example.com)
 
 -- Index Lookup (O(log n))
 db > SELECT * FROM users WHERE id = 1;
-(1, user1, user1@example.com)
 ```
 
-#### 4. Delete Data
-Delete a record by its primary key. Works with both Integer and Text primary keys (via hashing).
+#### 4. Update Data
+Modify existing records in-place.
 ```sql
-db > DELETE FROM users WHERE id = 1;
+db > UPDATE users SET username = 'Charlie' WHERE id = 1;
 ```
 
-#### 5. Exit
-Save changes and exit the REPL.
+#### 5. Delete Data
+```sql
+db > DELETE FROM users WHERE id = 2;
+```
+
+#### 6. Meta-commands
 ```sql
 db > .exit
+```
+
+### Examples
+You can find more example SQL scripts in the `examples/` directory. To run an example:
+```bash
+./db mydb.db < examples/01_create_and_insert.sql
 ```
 
 ## Educational Insights

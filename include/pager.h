@@ -23,8 +23,8 @@ typedef struct {
     uint32_t last_used[TABLE_MAX_PAGES];
     // Array of flags indicating whether a page has been modified
     bool is_dirty[TABLE_MAX_PAGES];
-    // Array of flags indicating whether a page is currently in use
-    bool pinned[TABLE_MAX_PAGES];
+    // Array of reference counts for pins on each page
+    uint32_t pinned[TABLE_MAX_PAGES];
     // Timer for tracking page usage
     uint32_t timer;
 } Pager;
@@ -36,5 +36,6 @@ void pin_page(Pager *p, uint32_t pg);
 void unpin_page(Pager *p, uint32_t pg);
 void unpin_page_all(Pager *p);
 void *get_page(Pager *p, uint32_t pg);
+void pager_close(Pager *p);
 
 #endif

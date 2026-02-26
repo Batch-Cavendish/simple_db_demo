@@ -27,9 +27,8 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    Statement statement;
-    PrepareResult prepare_result =
-        prepare_statement(line, &statement, &t->schema);
+    Statement statement = {};
+    auto prepare_result = prepare_statement(line, &statement, t);
 
     switch (prepare_result) {
     case PREPARE_SUCCESS:
@@ -40,18 +39,29 @@ int main(int argc, char *argv[]) {
     case PREPARE_UNRECOGNIZED_STATEMENT:
       printf("Unrecognized keyword at start of '%s'.\n", line);
       continue;
+    case PREPARE_NO_SCHEMA:
+      printf("Error: No table created. Use CREATE TABLE first.\n");
+      continue;
+    case PREPARE_TABLE_ALREADY_EXISTS:
+      printf("Error: Table already exists.\n");
+      continue;
+    case PREPARE_STRING_TOO_LONG:
+      printf("Error: String value too long.\n");
+      continue;
     }
 
     ExecuteResult execute_result = execute_statement(&statement, t);
     switch (execute_result) {
     case EXECUTE_SUCCESS:
-      // Already printed internal messages if any
       break;
     case EXECUTE_TABLE_FULL:
       printf("Error: Table full.\n");
       break;
     case EXECUTE_DUPLICATE_KEY:
       printf("Error: Duplicate key.\n");
+      break;
+    case EXECUTE_KEY_NOT_FOUND:
+      printf("Error: Key not found.\n");
       break;
     case EXECUTE_UNKNOWN_ERROR:
       printf("Unknown error.\n");

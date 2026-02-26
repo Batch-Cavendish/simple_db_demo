@@ -12,7 +12,7 @@ constexpr int MAX_PAGES_IN_MEMORY = 100;
 constexpr int MAX_FIELDS = 16;
 constexpr size_t FIELD_NAME_MAX = 32;
 
-typedef enum { FIELD_INT, FIELD_TEXT } FieldType;
+typedef enum : uint8_t { FIELD_INT, FIELD_TEXT } FieldType;
 
 typedef struct {
     char name[FIELD_NAME_MAX];
@@ -27,7 +27,9 @@ typedef struct {
     uint32_t row_size;
 } Schema;
 
-typedef enum { NODE_INTERNAL, NODE_LEAF } NodeType;
+typedef enum : uint8_t { NODE_INTERNAL, NODE_LEAF } NodeType;
+
+static_assert(PAGE_SIZE == 4096, "Database page size must be 4096 bytes");
 
 /* Common Node Header Layout */
 constexpr size_t NODE_TYPE_SIZE = sizeof(uint8_t);

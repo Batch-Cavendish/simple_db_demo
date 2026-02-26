@@ -122,7 +122,7 @@ uint32_t internal_node_find_child(void *node, uint32_t key) {
 }
 
 Cursor *find_node(Table *t, uint32_t pg, uint32_t key) {
-  void *node = get_page(t->pager, pg);
+  auto node = get_page(t->pager, pg);
   if (get_node_type(node) == NODE_LEAF)
     return leaf_node_find(t, pg, key);
   return find_node(
