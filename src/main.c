@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
     }
 
     Statement statement = {};
-    auto prepare_result = prepare_statement(line, &statement, t);
+    PrepareResult prepare_result = prepare_statement(line, &statement, t);
 
     switch (prepare_result) {
     case PREPARE_SUCCESS:

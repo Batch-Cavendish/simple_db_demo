@@ -39,7 +39,7 @@ The codebase is organized into modular components:
 ## Implementation Technologies
 
 -   **Language**: C23 (ISO/IEC 9899:2024).
--   **Key Features**: `auto` type inference, standardized attributes (`[[nodiscard]]`), fixed-underlying-type enums, and `nullptr`.
+-   **Key Features**: standardized attributes (`[[nodiscard]]`), fixed-underlying-type enums, and `nullptr`.
 -   **Storage Format**: Custom binary format using 4096-byte pages.
 -   **Build System**: GNU Makefile.
 
