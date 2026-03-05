@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -std=c23 -Wall -Wextra -Wpedantic -Iinclude
-SRC = src/main.c src/pager.c src/table.c src/btree.c src/statement.c src/schema.c
+SRC = src/main.c src/pager.c src/database.c src/btree.c src/statement.c src/schema.c
 OBJ = $(SRC:.c=.o)
 TARGET = db
 TEST_TARGET = unit_tests
@@ -14,7 +14,7 @@ $(TARGET): $(OBJ)
 
 test: unit_test golden_test
 
-unit_test: tests/unit_tests.c src/pager.c src/table.c src/btree.c src/statement.c src/schema.c
+unit_test: tests/unit_tests.c src/pager.c src/database.c src/btree.c src/statement.c src/schema.c
 	$(CC) $(CFLAGS) -o $(TEST_TARGET) $^
 	./$(TEST_TARGET)
 	rm -f $(TEST_TARGET)

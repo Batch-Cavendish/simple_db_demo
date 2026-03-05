@@ -1,11 +1,24 @@
-#include "btree.h"
-#include "schema.h"
 #include "statement.h"
+#include "btree.h"
+#include "database.h"
+#include "schema.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+typedef struct {
+  char *tokens[128];
+  uint32_t num_tokens;
+} PrepareContext;
+
+static void free_context(PrepareContext *ctx) {
+  for (uint32_t i = 0; i < ctx->num_tokens; i++) {
+    free(ctx->tokens[i]);
+  }
+  ctx->num_tokens = 0;
+}
 
 static char *skip_whitespace(char *str) {
   while (*str && isspace(*str))
@@ -13,149 +26,169 @@ static char *skip_whitespace(char *str) {
   return str;
 }
 
-static char *consume_token(char **str) {
+static char *consume_token_ctx(char **str, PrepareContext *ctx) {
   char *s = skip_whitespace(*str);
   if (*s == '\0')
     return nullptr;
 
+  char *token = nullptr;
   char *start = s;
-  if (*s == '(' || *s == ')' || *s == ',' || *s == '=' || *s == ';') {
+
+  if (*s == '(' || *s == ')' || *s == ',' || *s == '=' || *s == ';' ||
+      *s == '>' || *s == '<') {
     *str = s + 1;
-    char *token = malloc(2);
+    token = malloc(2);
     token[0] = *s;
     token[1] = '\0';
-    return token;
-  }
-
-  if (*s == '\'') {
+  } else if (*s == '\'') {
     s++;
     start = s;
     while (*s && *s != '\'')
       s++;
     size_t len = s - start;
-    char *token = malloc(len + 1);
+    token = malloc(len + 1);
     memcpy(token, start, len);
     token[len] = '\0';
     if (*s == '\'')
       s++;
     *str = s;
-    return token;
+  } else {
+    while (*s && !isspace(*s) && *s != '(' && *s != ')' && *s != ',' &&
+           *s != '=' && *s != ';')
+      s++;
+    size_t len = s - start;
+    token = malloc(len + 1);
+    memcpy(token, start, len);
+    token[len] = '\0';
+    *str = s;
   }
 
-  while (*s && !isspace(*s) && *s != '(' && *s != ')' && *s != ',' && *s != '=' &&
-         *s != ';')
-    s++;
-  size_t len = s - start;
-  char *token = malloc(len + 1);
-  memcpy(token, start, len);
-  token[len] = '\0';
-  *str = s;
+  if (token) {
+    if (ctx->num_tokens < 128) {
+      ctx->tokens[ctx->num_tokens++] = token;
+    } else {
+      free(token);
+      return nullptr;
+    }
+  }
   return token;
 }
 
-static bool expect_token(char **str, const char *expected) {
-  char *token = consume_token(str);
+static bool expect_token_ctx(char **str, const char *expected,
+                             PrepareContext *ctx) {
+  char *token = consume_token_ctx(str, ctx);
   if (token == nullptr)
     return false;
-  bool match = (strcasecmp(token, expected) == 0);
-  free(token);
-  return match;
+  return (strcasecmp(token, expected) == 0);
 }
 
 static PrepareResult prepare_insert(char *line, Statement *statement,
-                                    Schema *schema) {
+                                    Database *db, PrepareContext *ctx) {
   statement->type = STATEMENT_INSERT;
   char *curr = line;
 
-  // INSERT INTO table_name VALUES (val1, val2, ...)
-  if (!expect_token(&curr, "insert"))
+  if (!expect_token_ctx(&curr, "insert", ctx))
     return PREPARE_UNRECOGNIZED_STATEMENT;
-  if (!expect_token(&curr, "into"))
+  if (!expect_token_ctx(&curr, "into", ctx))
     return PREPARE_SYNTAX_ERROR;
-  free(consume_token(&curr)); // Skip table name
-  if (!expect_token(&curr, "values"))
+
+  char *table_name = consume_token_ctx(&curr, ctx);
+  if (table_name == nullptr)
     return PREPARE_SYNTAX_ERROR;
-  if (!expect_token(&curr, "("))
+
+  int table_index = find_table(db, table_name);
+  if (table_index == -1) {
+    return PREPARE_NO_TABLE;
+  }
+  strncpy(statement->table_name, table_name, TABLE_NAME_MAX - 1);
+  statement->table_name[TABLE_NAME_MAX - 1] = '\0';
+  statement->table_index = (uint32_t)table_index;
+
+  Schema *schema = &db->catalog.tables[statement->table_index].schema;
+
+  if (!expect_token_ctx(&curr, "values", ctx))
+    return PREPARE_SYNTAX_ERROR;
+  if (!expect_token_ctx(&curr, "(", ctx))
     return PREPARE_SYNTAX_ERROR;
 
   for (uint32_t i = 0; i < schema->num_fields; i++) {
-    char *token = consume_token(&curr);
+    char *token = consume_token_ctx(&curr, ctx);
     if (token == nullptr)
       return PREPARE_SYNTAX_ERROR;
 
     if (schema->fields[i].type == FIELD_INT) {
       statement->insert_values[i] = atoi(token);
-      free(token);
     } else {
       if (strlen(token) >= schema->fields[i].size) {
-        free(token);
-        // Free already allocated strings
-        for (uint32_t j = 0; j < i; j++) {
-          if (schema->fields[j].type == FIELD_TEXT)
-            free(statement->insert_strings[j]);
-        }
         return PREPARE_STRING_TOO_LONG;
       }
-      statement->insert_strings[i] = token; // Already malloc'd
+      // We must copy the string because PrepareContext will free the token
+      statement->insert_strings[i] = strdup(token);
       if (i == 0) {
         statement->insert_values[i] = hash_string(token);
       }
     }
 
     if (i < schema->num_fields - 1) {
-      if (!expect_token(&curr, ","))
+      if (!expect_token_ctx(&curr, ",", ctx))
         return PREPARE_SYNTAX_ERROR;
     }
   }
 
-  if (!expect_token(&curr, ")"))
+  if (!expect_token_ctx(&curr, ")", ctx))
     return PREPARE_SYNTAX_ERROR;
-
-  char *semi = consume_token(&curr);
-  if (semi)
-    free(semi);
 
   return PREPARE_SUCCESS;
 }
 
-static PrepareResult prepare_create(char *line, Statement *statement) {
+static PrepareResult prepare_create(char *line, Statement *statement,
+                                    Database *db, PrepareContext *ctx) {
   statement->type = STATEMENT_CREATE_TABLE;
   statement->new_schema.num_fields = 0;
   statement->new_schema.row_size = 0;
 
   char *curr = line;
-  if (!expect_token(&curr, "create"))
+  if (!expect_token_ctx(&curr, "create", ctx))
     return PREPARE_UNRECOGNIZED_STATEMENT;
-  if (!expect_token(&curr, "table"))
+  if (!expect_token_ctx(&curr, "table", ctx))
     return PREPARE_SYNTAX_ERROR;
-  free(consume_token(&curr)); // Skip table name
-  if (!expect_token(&curr, "("))
+
+  char *table_name = consume_token_ctx(&curr, ctx);
+  if (table_name == nullptr)
+    return PREPARE_SYNTAX_ERROR;
+
+  if (find_table(db, table_name) != -1) {
+    return PREPARE_TABLE_ALREADY_EXISTS;
+  }
+  if (db->catalog.num_tables >= MAX_TABLES) {
+    return PREPARE_CATALOG_FULL;
+  }
+
+  strncpy(statement->table_name, table_name, TABLE_NAME_MAX - 1);
+  statement->table_name[TABLE_NAME_MAX - 1] = '\0';
+
+  if (!expect_token_ctx(&curr, "(", ctx))
     return PREPARE_SYNTAX_ERROR;
 
   while (true) {
-    char *name = consume_token(&curr);
+    char *name = consume_token_ctx(&curr, ctx);
     if (name == nullptr || strcmp(name, ")") == 0) {
-      if (name)
-        free(name);
       break;
     }
 
     if (statement->new_schema.num_fields >= MAX_FIELDS) {
-      free(name);
-      return PREPARE_SYNTAX_ERROR; // Or a more specific error
+      return PREPARE_SYNTAX_ERROR;
     }
 
     Field *f =
         &statement->new_schema.fields[statement->new_schema.num_fields++];
     if (strlen(name) >= FIELD_NAME_MAX) {
-      free(name);
       return PREPARE_SYNTAX_ERROR;
     }
     strncpy(f->name, name, FIELD_NAME_MAX - 1);
     f->name[FIELD_NAME_MAX - 1] = '\0';
-    free(name);
 
-    char *type = consume_token(&curr);
+    char *type = consume_token_ctx(&curr, ctx);
     if (type == nullptr)
       return PREPARE_SYNTAX_ERROR;
 
@@ -166,100 +199,119 @@ static PrepareResult prepare_create(char *line, Statement *statement) {
       f->type = FIELD_TEXT;
       f->size = 32;
     }
-    free(type);
 
     f->offset = statement->new_schema.row_size;
     statement->new_schema.row_size += f->size;
 
-    char *next = consume_token(&curr);
+    char *next = consume_token_ctx(&curr, ctx);
     if (next == nullptr)
       return PREPARE_SYNTAX_ERROR;
     if (strcmp(next, ")") == 0) {
-      free(next);
       break;
     }
     if (strcmp(next, ",") != 0) {
-      free(next);
       return PREPARE_SYNTAX_ERROR;
     }
-    free(next);
   }
-
-  char *semi = consume_token(&curr);
-  if (semi)
-    free(semi);
 
   return PREPARE_SUCCESS;
 }
 
 static PrepareResult prepare_select(char *line, Statement *statement,
-                                    Schema *schema) {
+                                    Database *db, PrepareContext *ctx) {
   statement->type = STATEMENT_SELECT;
   char *curr = line;
 
-  if (!expect_token(&curr, "select"))
+  if (!expect_token_ctx(&curr, "select", ctx))
     return PREPARE_UNRECOGNIZED_STATEMENT;
-  if (!expect_token(&curr, "*"))
+  if (!expect_token_ctx(&curr, "*", ctx))
     return PREPARE_SYNTAX_ERROR;
-  if (!expect_token(&curr, "from"))
+  if (!expect_token_ctx(&curr, "from", ctx))
     return PREPARE_SYNTAX_ERROR;
-  free(consume_token(&curr)); // Skip table name
 
-  char *where = consume_token(&curr);
+  char *table_name = consume_token_ctx(&curr, ctx);
+  if (table_name == nullptr)
+    return PREPARE_SYNTAX_ERROR;
+
+  int table_index = find_table(db, table_name);
+  if (table_index == -1) {
+    return PREPARE_NO_TABLE;
+  }
+  strncpy(statement->table_name, table_name, TABLE_NAME_MAX - 1);
+  statement->table_name[TABLE_NAME_MAX - 1] = '\0';
+  statement->table_index = (uint32_t)table_index;
+
+  Schema *schema = &db->catalog.tables[statement->table_index].schema;
+
+  char *where = consume_token_ctx(&curr, ctx);
   if (where == nullptr || strcmp(where, ";") == 0) {
-    if (where)
-      free(where);
-    statement->select_whole_table = true;
+    statement->where_condition = WHERE_NONE;
     return PREPARE_SUCCESS;
   }
 
   if (strcasecmp(where, "where") != 0) {
-    free(where);
     return PREPARE_SYNTAX_ERROR;
   }
-  free(where);
 
-  free(consume_token(&curr)); // Skip column name
-  if (!expect_token(&curr, "="))
+  consume_token_ctx(&curr, ctx); // Skip column name
+  char *op = consume_token_ctx(&curr, ctx);
+  if (op == nullptr)
     return PREPARE_SYNTAX_ERROR;
 
-  char *val = consume_token(&curr);
+  if (strcmp(op, "=") == 0) {
+    statement->where_condition = WHERE_EQUALS;
+  } else if (strcmp(op, ">") == 0) {
+    statement->where_condition = WHERE_GREATER_THAN;
+  } else if (strcmp(op, "<") == 0) {
+    statement->where_condition = WHERE_LESS_THAN;
+  } else {
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  char *val = consume_token_ctx(&curr, ctx);
   if (val == nullptr)
     return PREPARE_SYNTAX_ERROR;
 
-  statement->select_whole_table = false;
   if (schema->num_fields > 0 && schema->fields[0].type == FIELD_TEXT) {
-    statement->select_key = hash_string(val);
+    statement->where_key = hash_string(val);
   } else {
-    statement->select_key = atoi(val);
+    statement->where_key = atoi(val);
   }
-  free(val);
-
-  char *semi = consume_token(&curr);
-  if (semi)
-    free(semi);
 
   return PREPARE_SUCCESS;
 }
 
 static PrepareResult prepare_delete(char *line, Statement *statement,
-                                    Schema *schema) {
+                                    Database *db, PrepareContext *ctx) {
   statement->type = STATEMENT_DELETE;
   char *curr = line;
 
-  if (!expect_token(&curr, "delete"))
+  if (!expect_token_ctx(&curr, "delete", ctx))
     return PREPARE_UNRECOGNIZED_STATEMENT;
-  if (!expect_token(&curr, "from"))
-    return PREPARE_SYNTAX_ERROR;
-  free(consume_token(&curr)); // Skip table name
-
-  if (!expect_token(&curr, "where"))
-    return PREPARE_SYNTAX_ERROR;
-  free(consume_token(&curr)); // Skip column name
-  if (!expect_token(&curr, "="))
+  if (!expect_token_ctx(&curr, "from", ctx))
     return PREPARE_SYNTAX_ERROR;
 
-  char *val = consume_token(&curr);
+  char *table_name = consume_token_ctx(&curr, ctx);
+  if (table_name == nullptr)
+    return PREPARE_SYNTAX_ERROR;
+
+  int table_index = find_table(db, table_name);
+  if (table_index == -1) {
+    return PREPARE_NO_TABLE;
+  }
+  strncpy(statement->table_name, table_name, TABLE_NAME_MAX - 1);
+  statement->table_name[TABLE_NAME_MAX - 1] = '\0';
+  statement->table_index = (uint32_t)table_index;
+
+  Schema *schema = &db->catalog.tables[statement->table_index].schema;
+
+  if (!expect_token_ctx(&curr, "where", ctx))
+    return PREPARE_SYNTAX_ERROR;
+  consume_token_ctx(&curr, ctx); // Skip column name
+  if (!expect_token_ctx(&curr, "=", ctx))
+    return PREPARE_SYNTAX_ERROR;
+
+  char *val = consume_token_ctx(&curr, ctx);
   if (val == nullptr)
     return PREPARE_SYNTAX_ERROR;
 
@@ -268,31 +320,39 @@ static PrepareResult prepare_delete(char *line, Statement *statement,
   } else {
     statement->delete_id = atoi(val);
   }
-  free(val);
-
-  char *semi = consume_token(&curr);
-  if (semi)
-    free(semi);
 
   return PREPARE_SUCCESS;
 }
 
 static PrepareResult prepare_update(char *line, Statement *statement,
-                                    Schema *schema) {
+                                    Database *db, PrepareContext *ctx) {
   statement->type = STATEMENT_UPDATE;
   for (int i = 0; i < MAX_FIELDS; i++)
     statement->update_mask[i] = false;
 
   char *curr = line;
-  if (!expect_token(&curr, "update"))
+  if (!expect_token_ctx(&curr, "update", ctx))
     return PREPARE_UNRECOGNIZED_STATEMENT;
-  free(consume_token(&curr)); // Skip table name
 
-  if (!expect_token(&curr, "set"))
+  char *table_name = consume_token_ctx(&curr, ctx);
+  if (table_name == nullptr)
+    return PREPARE_SYNTAX_ERROR;
+
+  int table_index = find_table(db, table_name);
+  if (table_index == -1) {
+    return PREPARE_NO_TABLE;
+  }
+  strncpy(statement->table_name, table_name, TABLE_NAME_MAX - 1);
+  statement->table_name[TABLE_NAME_MAX - 1] = '\0';
+  statement->table_index = (uint32_t)table_index;
+
+  Schema *schema = &db->catalog.tables[statement->table_index].schema;
+
+  if (!expect_token_ctx(&curr, "set", ctx))
     return PREPARE_SYNTAX_ERROR;
 
   while (true) {
-    char *name = consume_token(&curr);
+    char *name = consume_token_ctx(&curr, ctx);
     if (name == nullptr)
       return PREPARE_SYNTAX_ERROR;
 
@@ -303,57 +363,43 @@ static PrepareResult prepare_update(char *line, Statement *statement,
         break;
       }
     }
-    free(name);
 
     if (field_idx == -1)
       return PREPARE_SYNTAX_ERROR;
 
-    if (!expect_token(&curr, "="))
+    if (!expect_token_ctx(&curr, "=", ctx))
       return PREPARE_SYNTAX_ERROR;
 
-    char *val = consume_token(&curr);
+    char *val = consume_token_ctx(&curr, ctx);
     if (val == nullptr)
       return PREPARE_SYNTAX_ERROR;
 
     statement->update_mask[field_idx] = true;
     if (schema->fields[field_idx].type == FIELD_INT) {
       statement->insert_values[field_idx] = atoi(val);
-      free(val);
     } else {
       if (strlen(val) >= schema->fields[field_idx].size) {
-        free(val);
-        // Free strings already in this statement
-        for (int i = 0; i < MAX_FIELDS; i++) {
-          if (statement->update_mask[i] && schema->fields[i].type == FIELD_TEXT &&
-              statement->insert_strings[i]) {
-            free(statement->insert_strings[i]);
-            statement->insert_strings[i] = nullptr;
-          }
-        }
         return PREPARE_STRING_TOO_LONG;
       }
-      statement->insert_strings[field_idx] = val;
+      statement->insert_strings[field_idx] = strdup(val);
     }
 
-    char *next = consume_token(&curr);
+    char *next = consume_token_ctx(&curr, ctx);
     if (next == nullptr)
       return PREPARE_SYNTAX_ERROR;
     if (strcasecmp(next, "where") == 0) {
-      free(next);
       break;
     }
     if (strcmp(next, ",") != 0) {
-      free(next);
       return PREPARE_SYNTAX_ERROR;
     }
-    free(next);
   }
 
-  free(consume_token(&curr)); // Skip column name (assume it's the PK)
-  if (!expect_token(&curr, "="))
+  consume_token_ctx(&curr, ctx); // Skip column name (assume it's the PK)
+  if (!expect_token_ctx(&curr, "=", ctx))
     return PREPARE_SYNTAX_ERROR;
 
-  char *val = consume_token(&curr);
+  char *val = consume_token_ctx(&curr, ctx);
   if (val == nullptr)
     return PREPARE_SYNTAX_ERROR;
 
@@ -362,79 +408,79 @@ static PrepareResult prepare_update(char *line, Statement *statement,
   } else {
     statement->update_key = atoi(val);
   }
-  free(val);
-
-  char *semi = consume_token(&curr);
-  if (semi)
-    free(semi);
 
   return PREPARE_SUCCESS;
 }
 
-PrepareResult prepare_statement(char *line, Statement *statement, Table *t) {
+PrepareResult prepare_statement(char *line, Statement *statement,
+                                Database *db) {
+  PrepareContext ctx = {.num_tokens = 0};
+  PrepareResult result;
+
   if (strncasecmp(line, "create", 6) == 0) {
-    if (t->has_schema)
-      return PREPARE_TABLE_ALREADY_EXISTS;
-    return prepare_create(line, statement);
+    result = prepare_create(line, statement, db, &ctx);
+  } else if (strncasecmp(line, "insert", 6) == 0) {
+    result = prepare_insert(line, statement, db, &ctx);
+  } else if (strncasecmp(line, "select", 6) == 0) {
+    result = prepare_select(line, statement, db, &ctx);
+  } else if (strncasecmp(line, "delete", 6) == 0) {
+    result = prepare_delete(line, statement, db, &ctx);
+  } else if (strncasecmp(line, "update", 6) == 0) {
+    result = prepare_update(line, statement, db, &ctx);
+  } else if (strcasecmp(line, "begin") == 0) {
+    statement->type = STATEMENT_BEGIN;
+    result = PREPARE_SUCCESS;
+  } else if (strcasecmp(line, "commit") == 0) {
+    statement->type = STATEMENT_COMMIT;
+    result = PREPARE_SUCCESS;
+  } else if (strcasecmp(line, "rollback") == 0) {
+    statement->type = STATEMENT_ROLLBACK;
+    result = PREPARE_SUCCESS;
+  } else {
+    result = PREPARE_UNRECOGNIZED_STATEMENT;
   }
 
-  if (!t->has_schema)
-    return PREPARE_NO_SCHEMA;
-
-  if (strncasecmp(line, "insert", 6) == 0) {
-    return prepare_insert(line, statement, &t->schema);
-  }
-  if (strncasecmp(line, "select", 6) == 0) {
-    return prepare_select(line, statement, &t->schema);
-  }
-  if (strncasecmp(line, "delete", 6) == 0) {
-    return prepare_delete(line, statement, &t->schema);
-  }
-  if (strncasecmp(line, "update", 6) == 0) {
-    return prepare_update(line, statement, &t->schema);
-  }
-  return PREPARE_UNRECOGNIZED_STATEMENT;
+  free_context(&ctx);
+  return result;
 }
 
-static ExecuteResult execute_insert(Statement *statement, Table *t) {
-  Cursor *c = find_node(t, t->root_page_num, statement->insert_values[0]);
-  void *node = get_page(t->pager, c->page_num);
+static ExecuteResult execute_insert(Statement *statement, Database *db) {
+  uint32_t table_index = statement->table_index;
+  TableDefinition *td = &db->catalog.tables[table_index];
+  Cursor *c = find_node(db, table_index, td->root_page_num,
+                        statement->insert_values[0]);
+  void *node = get_page(db->pager, c->page_num);
   if (c->cell_num < *leaf_node_num_cells(node)) {
-    uint32_t key_at_index = *leaf_node_key(node, c->cell_num, &t->schema);
+    uint32_t key_at_index = *leaf_node_key(node, c->cell_num, &td->schema);
     if (key_at_index == statement->insert_values[0]) {
-      // Free strings
-      for (uint32_t i = 0; i < t->schema.num_fields; i++) {
-        if (t->schema.fields[i].type == FIELD_TEXT)
-          free(statement->insert_strings[i]);
-      }
+      free_statement(statement);
       free(c);
-      unpin_page_all(t->pager);
+      unpin_page_all(db->pager);
       return EXECUTE_DUPLICATE_KEY;
     }
   }
 
   leaf_node_insert(c, statement->insert_values[0], statement);
 
-  // Free strings after insertion
-  for (uint32_t i = 0; i < t->schema.num_fields; i++) {
-    if (t->schema.fields[i].type == FIELD_TEXT)
-      free(statement->insert_strings[i]);
-  }
+  free_statement(statement);
   free(c);
-  unpin_page_all(t->pager);
+  unpin_page_all(db->pager);
   return EXECUTE_SUCCESS;
 }
 
-static ExecuteResult execute_select(Statement *statement, Table *t) {
+static ExecuteResult execute_select(Statement *statement, Database *db) {
+  uint32_t table_index = statement->table_index;
+  TableDefinition *td = &db->catalog.tables[table_index];
   Cursor *c;
-  if (statement->select_whole_table) {
-    c = table_start(t);
+  if (statement->where_condition == WHERE_NONE ||
+      statement->where_condition == WHERE_LESS_THAN) {
+    c = table_start(db, table_index);
   } else {
-    c = find_node(t, t->root_page_num, statement->select_key);
+    c = find_node(db, table_index, td->root_page_num, statement->where_key);
   }
 
   while (true) {
-    void *node = get_page(t->pager, c->page_num);
+    void *node = get_page(db->pager, c->page_num);
     if (c->cell_num >= *leaf_node_num_cells(node)) {
       uint32_t next = *leaf_node_next_leaf(node);
       if (next == 0)
@@ -444,26 +490,34 @@ static ExecuteResult execute_select(Statement *statement, Table *t) {
       continue;
     }
 
-    // If selecting by key, verify we match.
-    if (!statement->select_whole_table) {
-      uint32_t key = *leaf_node_key(node, c->cell_num, &t->schema);
-      if (key != statement->select_key)
+    uint32_t key = *leaf_node_key(node, c->cell_num, &td->schema);
+
+    if (statement->where_condition == WHERE_EQUALS) {
+      if (key != statement->where_key)
+        break;
+    } else if (statement->where_condition == WHERE_GREATER_THAN) {
+      if (key <= statement->where_key) {
+        c->cell_num++;
+        continue;
+      }
+    } else if (statement->where_condition == WHERE_LESS_THAN) {
+      if (key >= statement->where_key)
         break;
     }
 
-    void *val = leaf_node_value(node, c->cell_num, &t->schema);
+    void *val = leaf_node_value(node, c->cell_num, &td->schema);
     printf("(");
-    for (uint32_t i = 0; i < t->schema.num_fields; i++) {
-      if (t->schema.fields[i].type == FIELD_INT) {
+    for (uint32_t i = 0; i < td->schema.num_fields; i++) {
+      if (td->schema.fields[i].type == FIELD_INT) {
         uint32_t v;
-        deserialize_field(&t->schema, i, val, &v);
-        printf("%d", v);
+        deserialize_field(&td->schema, i, val, &v);
+        printf("%u", v);
       } else {
         char v[33] = {0};
-        deserialize_field(&t->schema, i, val, v);
+        deserialize_field(&td->schema, i, val, v);
         printf("%s", v);
       }
-      if (i < t->schema.num_fields - 1)
+      if (i < td->schema.num_fields - 1)
         printf(", ");
     }
     printf(")\n");
@@ -473,84 +527,120 @@ static ExecuteResult execute_select(Statement *statement, Table *t) {
   return EXECUTE_SUCCESS;
 }
 
-static ExecuteResult execute_delete(Statement *statement, Table *t) {
+static ExecuteResult execute_delete(Statement *statement, Database *db) {
+  uint32_t table_index = statement->table_index;
+  TableDefinition *td = &db->catalog.tables[table_index];
   uint32_t id = statement->delete_id;
-  Cursor *c = find_node(t, t->root_page_num, id);
-  void *node = get_page(t->pager, c->page_num);
+  Cursor *c = find_node(db, table_index, td->root_page_num, id);
+  void *node = get_page(db->pager, c->page_num);
   ExecuteResult res = EXECUTE_SUCCESS;
   if (c->cell_num < *leaf_node_num_cells(node) &&
-      *leaf_node_key(node, c->cell_num, &t->schema) == id) {
+      *leaf_node_key(node, c->cell_num, &td->schema) == id) {
     leaf_node_delete(c);
     printf("Deleted.\n");
   } else {
     res = EXECUTE_KEY_NOT_FOUND;
   }
   free(c);
-  unpin_page_all(t->pager);
+  unpin_page_all(db->pager);
   return res;
 }
 
-static ExecuteResult execute_create(Statement *statement, Table *t) {
-  t->schema = statement->new_schema;
-  t->has_schema = true;
+static ExecuteResult execute_create(Statement *statement, Database *db) {
+  uint32_t table_index = db->catalog.num_tables;
+  TableDefinition *td = &db->catalog.tables[table_index];
+
+  strncpy(td->name, statement->table_name, TABLE_NAME_MAX);
+  td->schema = statement->new_schema;
+
+  // Allocate new root page
+  uint32_t root_page_num = db->pager->num_pages;
+  if (root_page_num == 0)
+    root_page_num = 1; // Page 0 is catalog
+
+  td->root_page_num = root_page_num;
+  void *root = get_page(db->pager, root_page_num);
+  initialize_leaf_node(root);
+  set_node_root(root, true);
+  mark_page_dirty(db->pager, root_page_num);
+
+  db->catalog.num_tables++;
+  db_save_catalog(db);
+
   return EXECUTE_SUCCESS;
 }
 
-static ExecuteResult execute_update(Statement *statement, Table *t) {
-  Cursor *c = find_node(t, t->root_page_num, statement->update_key);
-  void *node = get_page(t->pager, c->page_num);
+static ExecuteResult execute_update(Statement *statement, Database *db) {
+  uint32_t table_index = statement->table_index;
+  TableDefinition *td = &db->catalog.tables[table_index];
+  Cursor *c =
+      find_node(db, table_index, td->root_page_num, statement->update_key);
+  void *node = get_page(db->pager, c->page_num);
   ExecuteResult res = EXECUTE_SUCCESS;
   if (c->cell_num < *leaf_node_num_cells(node) &&
-      *leaf_node_key(node, c->cell_num, &t->schema) == statement->update_key) {
-    void *val = leaf_node_value(node, c->cell_num, &t->schema);
-    for (uint32_t i = 0; i < t->schema.num_fields; i++) {
+      *leaf_node_key(node, c->cell_num, &td->schema) == statement->update_key) {
+    void *val = leaf_node_value(node, c->cell_num, &td->schema);
+    for (uint32_t i = 0; i < td->schema.num_fields; i++) {
       if (statement->update_mask[i]) {
-        if (t->schema.fields[i].type == FIELD_INT) {
-          serialize_field(&t->schema, i, &statement->insert_values[i], val);
+        if (td->schema.fields[i].type == FIELD_INT) {
+          serialize_field(&td->schema, i, &statement->insert_values[i], val);
         } else {
-          serialize_field(&t->schema, i, statement->insert_strings[i], val);
-          // Special case: if we update the first field and it's a TEXT, we
-          // should update the key too
+          serialize_field(&td->schema, i, statement->insert_strings[i], val);
           if (i == 0) {
-            *leaf_node_key(node, c->cell_num, &t->schema) =
+            *leaf_node_key(node, c->cell_num, &td->schema) =
                 hash_string(statement->insert_strings[i]);
           }
         }
-        // If we update the first field and it's an INT, update the key
-        if (i == 0 && t->schema.fields[i].type == FIELD_INT) {
-          *leaf_node_key(node, c->cell_num, &t->schema) =
+        if (i == 0 && td->schema.fields[i].type == FIELD_INT) {
+          *leaf_node_key(node, c->cell_num, &td->schema) =
               statement->insert_values[i];
         }
       }
     }
-    mark_page_dirty(t->pager, c->page_num);
+    mark_page_dirty(db->pager, c->page_num);
     printf("Updated.\n");
   } else {
     res = EXECUTE_KEY_NOT_FOUND;
   }
 
-  // Free strings
-  for (uint32_t i = 0; i < t->schema.num_fields; i++) {
-    if (t->schema.fields[i].type == FIELD_TEXT && statement->update_mask[i])
-      free(statement->insert_strings[i]);
-  }
+  free_statement(statement);
   free(c);
-  unpin_page_all(t->pager);
+  unpin_page_all(db->pager);
   return res;
 }
 
-ExecuteResult execute_statement(Statement *statement, Table *t) {
+ExecuteResult execute_statement(Statement *statement, Database *db) {
   switch (statement->type) {
   case STATEMENT_INSERT:
-    return execute_insert(statement, t);
+    return execute_insert(statement, db);
   case STATEMENT_SELECT:
-    return execute_select(statement, t);
+    return execute_select(statement, db);
   case STATEMENT_DELETE:
-    return execute_delete(statement, t);
+    return execute_delete(statement, db);
   case STATEMENT_UPDATE:
-    return execute_update(statement, t);
+    return execute_update(statement, db);
   case STATEMENT_CREATE_TABLE:
-    return execute_create(statement, t);
+    return execute_create(statement, db);
+  case STATEMENT_BEGIN:
+    printf("Transaction started.\n");
+    return EXECUTE_SUCCESS;
+  case STATEMENT_COMMIT:
+    db_save_catalog(db);
+    printf("Transaction committed.\n");
+    return EXECUTE_SUCCESS;
+  case STATEMENT_ROLLBACK:
+    printf("Rollback requested. Note: ROLLBACK is currently not supported in "
+           "this educational version. Every statement is auto-committed.\n");
+    return EXECUTE_SUCCESS;
   }
   return EXECUTE_UNKNOWN_ERROR;
+}
+
+void free_statement(Statement *statement) {
+  for (int i = 0; i < MAX_FIELDS; i++) {
+    if (statement->insert_strings[i]) {
+      free(statement->insert_strings[i]);
+      statement->insert_strings[i] = nullptr;
+    }
+  }
 }

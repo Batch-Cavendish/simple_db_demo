@@ -7,10 +7,13 @@
 #include <sys/types.h>
 
 constexpr size_t PAGE_SIZE = 4096;
+constexpr uint32_t CATALOG_PAGE_NUM = 0;
 constexpr int TABLE_MAX_PAGES = 1000;
 constexpr int MAX_PAGES_IN_MEMORY = 100;
 constexpr int MAX_FIELDS = 16;
 constexpr size_t FIELD_NAME_MAX = 32;
+constexpr size_t TABLE_NAME_MAX = 32;
+constexpr int MAX_TABLES = 5;
 
 typedef enum : uint8_t { FIELD_INT, FIELD_TEXT } FieldType;
 
