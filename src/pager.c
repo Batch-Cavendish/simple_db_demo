@@ -2,6 +2,7 @@
 #include "os_portability.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdckdint.h>
 
 Pager *pager_open(const char *filename) {
   int fd = open(filename, DB_OPEN_FLAGS, S_IWUSR | S_IRUSR);
@@ -40,7 +41,12 @@ void unpin_page_all(Pager *p) {
 
 void pager_flush(Pager *p, uint32_t pg) {
   if (p->pages[pg] && p->is_dirty[pg]) {
-    lseek(p->file_descriptor, pg * PAGE_SIZE, SEEK_SET);
+    uint64_t offset;
+    if (ckd_mul(&offset, (uint64_t)pg, (uint64_t)PAGE_SIZE)) {
+        printf("Page offset overflow\n");
+        exit(EXIT_FAILURE);
+    }
+    lseek(p->file_descriptor, (off_t)offset, SEEK_SET);
     write(p->file_descriptor, p->pages[pg], PAGE_SIZE);
     p->is_dirty[pg] = false;
   }
@@ -77,7 +83,12 @@ void *get_page(Pager *p, uint32_t pg) {
 
     void *page = malloc(PAGE_SIZE);
     if (pg < p->num_pages) {
-      lseek(p->file_descriptor, pg * PAGE_SIZE, SEEK_SET);
+      uint64_t offset;
+      if (ckd_mul(&offset, (uint64_t)pg, (uint64_t)PAGE_SIZE)) {
+          printf("Page offset overflow\n");
+          exit(EXIT_FAILURE);
+      }
+      lseek(p->file_descriptor, (off_t)offset, SEEK_SET);
       read(p->file_descriptor, page, PAGE_SIZE);
     }
     p->pages[pg] = page;

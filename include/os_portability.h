@@ -21,7 +21,6 @@
 #define write _write
 #define lseek _lseek
 #define close _close
-#define unlink _unlink
 #define isatty _isatty
 #define strdup _strdup
 #define strcasecmp _stricmp

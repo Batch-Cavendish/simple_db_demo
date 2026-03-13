@@ -52,8 +52,8 @@ This project is a "white-box" implementation of a relational database, designed 
 - **Tasks:** Modify `src/os_portability.c` to support `Ctrl-R` search through the `History` struct.
 
 ### Exercise D: Portable File Deletion
-**Goal:** Add a portable `db_delete_file(const char* filename)` function.
-- **Tasks:** Implement this in `os_portability.c` using `unlink` for Linux and `_unlink` for Windows, and use it in `tests/unit_tests.c`.
+**Goal:** Use the standard C `remove()` function for portable file deletion.
+- **Tasks:** Replace any OS-specific `unlink` or `_unlink` calls with the standard `remove(const char* filename)` function from `<stdio.h>`. Discuss why standard library functions are preferred for non-performance-critical tasks like file cleanup.
 
 ---
 

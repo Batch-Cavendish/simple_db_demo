@@ -18,7 +18,7 @@ void test_pager_open_close() {
   assert(p->file_length == 0);
   assert(p->num_pages == 0);
   pager_close(p);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -38,7 +38,7 @@ void test_pager_get_page() {
   assert(page0 == page0_again);
 
   pager_close(p);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -55,7 +55,7 @@ void test_pager_dirty_tracking() {
   assert(p->is_dirty[0] == false);
 
   pager_close(p);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -77,7 +77,7 @@ void test_pager_read_write() {
     assert(strcmp(page0, "Hello, Pager!") == 0);
     pager_close(p);
   }
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -99,7 +99,7 @@ void test_pager_lru_eviction() {
   assert(p->pages[MAX_PAGES_IN_MEMORY] != NULL);
 
   pager_close(p);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -119,7 +119,7 @@ void test_btree_node_initialization() {
   assert(*internal_node_num_keys(node) == 0);
 
   pager_close(p);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
@@ -169,7 +169,7 @@ void test_btree_insert_lookup() {
   free(c);
 
   db_close(db);
-  unlink(TEST_FILE);
+  remove(TEST_FILE);
   printf("Passed!\n");
 }
 
