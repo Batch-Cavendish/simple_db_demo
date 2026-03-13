@@ -15,9 +15,15 @@ typedef struct {
   TableDefinition tables[MAX_TABLES];
 } Catalog;
 
+typedef enum {
+  PRINT_PLAIN,
+  PRINT_BOX
+} PrintMode;
+
 typedef struct {
   Pager *pager;
   Catalog catalog;
+  PrintMode print_mode;
 } Database;
 
 typedef struct {

@@ -14,6 +14,7 @@ Pager *pager_open(const char *filename) {
   p->file_descriptor = fd;
   p->file_length = len;
   p->num_pages = len / PAGE_SIZE;
+  p->num_pages_in_memory = 0;
   p->timer = 0;
   for (int i = 0; i < TABLE_MAX_PAGES; i++) {
     p->pages[i] = nullptr;
@@ -50,15 +51,12 @@ void mark_page_dirty(Pager *p, uint32_t pg) { p->is_dirty[pg] = true; }
 void *get_page(Pager *p, uint32_t pg) {
   p->timer++;
   if (p->pages[pg] == nullptr) {
-    uint32_t pages_in_memory = 0;
-    for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
-      if (p->pages[i])
-        pages_in_memory++;
-    }
-
-    if (pages_in_memory >= MAX_PAGES_IN_MEMORY) {
+    // Evict a page if the buffer pool is full
+    if (p->num_pages_in_memory >= MAX_PAGES_IN_MEMORY) {
       uint32_t victim = 0xFFFFFFFF;
       uint32_t min_time = 0xFFFFFFFF;
+
+      // Find an unpinned page that was least recently used
       for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
         if (p->pages[i] && p->pinned[i] == 0 && p->last_used[i] < min_time) {
           min_time = p->last_used[i];
@@ -67,15 +65,14 @@ void *get_page(Pager *p, uint32_t pg) {
       }
 
       if (victim == 0xFFFFFFFF) {
-        printf(
-            "Buffer pool full and all pages are pinned! Cannot load page %d\n",
-            pg);
+        printf("Buffer pool full and all pages are pinned! Cannot load page %u\n", pg);
         exit(EXIT_FAILURE);
       }
 
       pager_flush(p, victim);
       free(p->pages[victim]);
       p->pages[victim] = nullptr;
+      p->num_pages_in_memory--;
     }
 
     void *page = malloc(PAGE_SIZE);
@@ -85,6 +82,7 @@ void *get_page(Pager *p, uint32_t pg) {
     }
     p->pages[pg] = page;
     p->is_dirty[pg] = false;
+    p->num_pages_in_memory++;
     if (pg >= p->num_pages)
       p->num_pages = pg + 1;
   }

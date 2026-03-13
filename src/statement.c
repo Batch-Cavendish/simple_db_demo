@@ -468,6 +468,43 @@ static ExecuteResult execute_insert(Statement *statement, Database *db) {
   return EXECUTE_SUCCESS;
 }
 
+static void print_box_header(Schema *schema, uint32_t *widths) {
+  printf("┌");
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    for (uint32_t j = 0; j < widths[i] + 2; j++)
+      printf("─");
+    if (i < schema->num_fields - 1)
+      printf("┬");
+  }
+  printf("┐\n");
+
+  printf("│");
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    printf(" %-*s │", widths[i], schema->fields[i].name);
+  }
+  printf("\n");
+
+  printf("├");
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    for (uint32_t j = 0; j < widths[i] + 2; j++)
+      printf("─");
+    if (i < schema->num_fields - 1)
+      printf("┼");
+  }
+  printf("┤\n");
+}
+
+static void print_box_footer(Schema *schema, uint32_t *widths) {
+  printf("└");
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    for (uint32_t j = 0; j < widths[i] + 2; j++)
+      printf("─");
+    if (i < schema->num_fields - 1)
+      printf("┴");
+  }
+  printf("┘\n");
+}
+
 static ExecuteResult execute_select(Statement *statement, Database *db) {
   uint32_t table_index = statement->table_index;
   TableDefinition *td = &db->catalog.tables[table_index];
@@ -479,49 +516,149 @@ static ExecuteResult execute_select(Statement *statement, Database *db) {
     c = find_node(db, table_index, td->root_page_num, statement->where_key);
   }
 
-  while (true) {
-    void *node = get_page(db->pager, c->page_num);
-    if (c->cell_num >= *leaf_node_num_cells(node)) {
-      uint32_t next = *leaf_node_next_leaf(node);
-      if (next == 0)
-        break;
-      c->page_num = next;
-      c->cell_num = 0;
-      continue;
+  if (db->print_mode == PRINT_BOX) {
+    // In a real DB we wouldn't load everything into memory, but for education
+    // and small tables it's fine.
+    uint32_t widths[MAX_FIELDS];
+    for (uint32_t i = 0; i < td->schema.num_fields; i++) {
+      widths[i] = (uint32_t)strlen(td->schema.fields[i].name);
     }
 
-    uint32_t key = *leaf_node_key(node, c->cell_num, &td->schema);
+    // First pass: calculate widths
+    Cursor *temp_c = malloc(sizeof(Cursor));
+    memcpy(temp_c, c, sizeof(Cursor));
+    while (true) {
+      void *node = get_page(db->pager, temp_c->page_num);
+      if (temp_c->cell_num >= *leaf_node_num_cells(node)) {
+        uint32_t next = *leaf_node_next_leaf(node);
+        if (next == 0)
+          break;
+        temp_c->page_num = next;
+        temp_c->cell_num = 0;
+        continue;
+      }
 
-    if (statement->where_condition == WHERE_EQUALS) {
-      if (key != statement->where_key)
+      uint32_t key = *leaf_node_key(node, temp_c->cell_num, &td->schema);
+      if (statement->where_condition == WHERE_EQUALS &&
+          key != statement->where_key)
         break;
-    } else if (statement->where_condition == WHERE_GREATER_THAN) {
-      if (key <= statement->where_key) {
+      if (statement->where_condition == WHERE_GREATER_THAN &&
+          key <= statement->where_key) {
+        temp_c->cell_num++;
+        continue;
+      }
+      if (statement->where_condition == WHERE_LESS_THAN &&
+          key >= statement->where_key)
+        break;
+
+      void *val = leaf_node_value(node, temp_c->cell_num, &td->schema);
+      for (uint32_t i = 0; i < td->schema.num_fields; i++) {
+        char buf[64];
+        if (td->schema.fields[i].type == FIELD_INT) {
+          uint32_t v;
+          deserialize_field(&td->schema, i, val, &v);
+          snprintf(buf, sizeof(buf), "%u", v);
+        } else {
+          deserialize_field(&td->schema, i, val, buf);
+        }
+        uint32_t len = (uint32_t)strlen(buf);
+        if (len > widths[i])
+          widths[i] = len;
+      }
+      temp_c->cell_num++;
+    }
+    free(temp_c);
+
+    print_box_header(&td->schema, widths);
+
+    // Second pass: print rows
+    while (true) {
+      void *node = get_page(db->pager, c->page_num);
+      if (c->cell_num >= *leaf_node_num_cells(node)) {
+        uint32_t next = *leaf_node_next_leaf(node);
+        if (next == 0)
+          break;
+        c->page_num = next;
+        c->cell_num = 0;
+        continue;
+      }
+
+      uint32_t key = *leaf_node_key(node, c->cell_num, &td->schema);
+      if (statement->where_condition == WHERE_EQUALS &&
+          key != statement->where_key)
+        break;
+      if (statement->where_condition == WHERE_GREATER_THAN &&
+          key <= statement->where_key) {
         c->cell_num++;
         continue;
       }
-    } else if (statement->where_condition == WHERE_LESS_THAN) {
-      if (key >= statement->where_key)
+      if (statement->where_condition == WHERE_LESS_THAN &&
+          key >= statement->where_key)
         break;
-    }
 
-    void *val = leaf_node_value(node, c->cell_num, &td->schema);
-    printf("(");
-    for (uint32_t i = 0; i < td->schema.num_fields; i++) {
-      if (td->schema.fields[i].type == FIELD_INT) {
-        uint32_t v;
-        deserialize_field(&td->schema, i, val, &v);
-        printf("%u", v);
-      } else {
-        char v[33] = {0};
-        deserialize_field(&td->schema, i, val, v);
-        printf("%s", v);
+      void *val = leaf_node_value(node, c->cell_num, &td->schema);
+      printf("│");
+      for (uint32_t i = 0; i < td->schema.num_fields; i++) {
+        char buf[64];
+        if (td->schema.fields[i].type == FIELD_INT) {
+          uint32_t v;
+          deserialize_field(&td->schema, i, val, &v);
+          snprintf(buf, sizeof(buf), "%u", v);
+        } else {
+          deserialize_field(&td->schema, i, val, buf);
+        }
+        printf(" %-*s │", widths[i], buf);
       }
-      if (i < td->schema.num_fields - 1)
-        printf(", ");
+      printf("\n");
+      c->cell_num++;
     }
-    printf(")\n");
-    c->cell_num++;
+    print_box_footer(&td->schema, widths);
+  } else {
+    // PLAIN MODE
+    while (true) {
+      void *node = get_page(db->pager, c->page_num);
+      if (c->cell_num >= *leaf_node_num_cells(node)) {
+        uint32_t next = *leaf_node_next_leaf(node);
+        if (next == 0)
+          break;
+        c->page_num = next;
+        c->cell_num = 0;
+        continue;
+      }
+
+      uint32_t key = *leaf_node_key(node, c->cell_num, &td->schema);
+
+      if (statement->where_condition == WHERE_EQUALS) {
+        if (key != statement->where_key)
+          break;
+      } else if (statement->where_condition == WHERE_GREATER_THAN) {
+        if (key <= statement->where_key) {
+          c->cell_num++;
+          continue;
+        }
+      } else if (statement->where_condition == WHERE_LESS_THAN) {
+        if (key >= statement->where_key)
+          break;
+      }
+
+      void *val = leaf_node_value(node, c->cell_num, &td->schema);
+      printf("(");
+      for (uint32_t i = 0; i < td->schema.num_fields; i++) {
+        if (td->schema.fields[i].type == FIELD_INT) {
+          uint32_t v;
+          deserialize_field(&td->schema, i, val, &v);
+          printf("%u", v);
+        } else {
+          char v[33] = {0};
+          deserialize_field(&td->schema, i, val, v);
+          printf("%s", v);
+        }
+        if (i < td->schema.num_fields - 1)
+          printf(", ");
+      }
+      printf(")\n");
+      c->cell_num++;
+    }
   }
   free(c);
   return EXECUTE_SUCCESS;

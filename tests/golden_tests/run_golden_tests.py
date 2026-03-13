@@ -10,8 +10,8 @@ def normalize_output(stdout):
     lines = stdout.splitlines()
     processed_lines = []
     for line in lines:
-        # Remove prompt "db > " if present
-        if "db > " in line:
+        # Remove prompt "db > " if present (potentially multiple times)
+        while "db > " in line:
             line = line.replace("db > ", "")
         
         line = line.rstrip()

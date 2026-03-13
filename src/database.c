@@ -14,6 +14,7 @@ Database *db_open(const char *filename) {
   Pager *p = pager_open(filename);
   Database *db = malloc(sizeof(Database));
   db->pager = p;
+  db->print_mode = PRINT_PLAIN;
   if (p->num_pages > 0) {
     void *page0 = get_page(p, 0);
     memcpy(&db->catalog, page0, sizeof(Catalog));

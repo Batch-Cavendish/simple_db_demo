@@ -25,6 +25,8 @@ typedef struct {
   bool is_dirty[TABLE_MAX_PAGES];
   // Array of reference counts for pins on each page
   uint32_t pinned[TABLE_MAX_PAGES];
+  // Number of pages currently loaded in memory
+  uint32_t num_pages_in_memory;
   // Timer for tracking page usage
   uint32_t timer;
 } Pager;

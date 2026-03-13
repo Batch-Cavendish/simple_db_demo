@@ -14,7 +14,8 @@ common_src = [
   'src/database.c',
   'src/btree.c',
   'src/statement.c',
-  'src/schema.c'
+  'src/schema.c',
+  'src/os_portability.c'
 ]
 
 db_exe = executable('db',

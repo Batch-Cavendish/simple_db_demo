@@ -5,6 +5,9 @@
 #include "btree.h"
 #include "database.h"
 #include "statement.h"
+#include "os_portability.h"
+
+#define MAX_LINE_LEN 1024
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
@@ -13,21 +16,49 @@ int main(int argc, char *argv[]) {
   }
 
   Database *db = db_open(argv[1]);
-  char line[1024];
+  char line[MAX_LINE_LEN];
 
-  while (printf("db > "), fgets(line, 1024, stdin)) {
-    line[strcspn(line, "\n")] = 0;
-    line[strcspn(line, "\r")] = 0; // Handle Windows-style line endings
+  // Check if stdin is a terminal for raw mode
+  int is_tty = isatty(STDIN_FILENO);
+  if (is_tty) {
+    terminal_enable_raw_mode();
+  }
+
+  while (1) {
+    int len;
+    if (is_tty) {
+      len = terminal_read_line(line, MAX_LINE_LEN);
+      if (len < 0) break;
+    } else {
+      if (printf("db > "), fflush(stdout), fgets(line, MAX_LINE_LEN, stdin) == NULL) break;
+      line[strcspn(line, "\n")] = 0;
+      line[strcspn(line, "\r")] = 0;
+      len = (int)strlen(line);
+    }
+
+    if (len == 0) continue;
+    if (is_tty) terminal_history_add(line);
 
     // Meta-commands
     if (line[0] == '.') {
       if (strcmp(line, ".exit") == 0) {
         break;
       }
-      if (strcmp(line, ".tables") == 0) {
+      if (strcmp(line, ".tables") == 0 || strcmp(line, ".table") == 0) {
         for (uint32_t i = 0; i < db->catalog.num_tables; i++) {
           printf("%s (%u columns)\n", db->catalog.tables[i].name,
                  db->catalog.tables[i].schema.num_fields);
+        }
+        continue;
+      }
+      if (strncmp(line, ".mode ", 6) == 0) {
+        char *mode = line + 6;
+        if (strcmp(mode, "box") == 0) {
+          db->print_mode = PRINT_BOX;
+        } else if (strcmp(mode, "plain") == 0) {
+          db->print_mode = PRINT_PLAIN;
+        } else {
+          printf("Unrecognized mode '%s'\n", mode);
         }
         continue;
       }

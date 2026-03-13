@@ -1,6 +1,10 @@
 #ifndef OS_PORTABILITY_H
 #define OS_PORTABILITY_H
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -44,5 +48,13 @@
 
 #define DB_OPEN_FLAGS (O_RDWR | O_CREAT)
 #endif
+
+#include "common.h"
+
+// Terminal / REPL Portability
+void terminal_enable_raw_mode();
+void terminal_disable_raw_mode();
+int terminal_read_line(char *buf, size_t size);
+void terminal_history_add(const char *line);
 
 #endif // OS_PORTABILITY_H
