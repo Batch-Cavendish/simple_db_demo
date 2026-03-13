@@ -13,6 +13,8 @@
 #include <io.h>
 #include <fcntl.h>
 #include <direct.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #define open _open
 #define read _read
@@ -20,6 +22,22 @@
 #define lseek _lseek
 #define close _close
 #define unlink _unlink
+#define isatty _isatty
+#define strdup _strdup
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#endif
+
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+
+#ifndef STDERR_FILENO
+#define STDERR_FILENO 2
+#endif
 
 // File opening flags
 #ifndef O_RDWR
@@ -32,9 +50,13 @@
 #define O_BINARY _O_BINARY
 #endif
 
-// Mode flags (simplified for educational database)
-#define S_IWUSR 0
-#define S_IRUSR 0
+// Mode flags (mapped to Win32 constants)
+#ifndef S_IWUSR
+#define S_IWUSR _S_IWRITE
+#endif
+#ifndef S_IRUSR
+#define S_IRUSR _S_IREAD
+#endif
 
 // Use O_BINARY on Windows to prevent line-ending conversion
 #define DB_OPEN_FLAGS (O_RDWR | O_CREAT | O_BINARY)
@@ -45,6 +67,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <strings.h>
 
 #define DB_OPEN_FLAGS (O_RDWR | O_CREAT)
 #endif

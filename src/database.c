@@ -1,8 +1,8 @@
 #include "database.h"
 #include "btree.h"
+#include "os_portability.h"
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 void db_save_catalog(Database *db) {
   void *page0 = get_page(db->pager, 0);

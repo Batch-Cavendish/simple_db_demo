@@ -22,11 +22,12 @@ This project is a "white-box" implementation of a relational database, designed 
 - **Learning Objective:** Understand the role of a **Serialization Layer**.
 - **Teaching Point:** How does `serialize_row` handle different data types (INT vs. TEXT)? Discuss the importance of null-terminating text fields on disk.
 
-### 4. Cross-Platform Portability & REPL
+### 4. Cross-Platform Portability & the "Shim" Pattern
 **Files:** `include/os_portability.h`, `src/os_portability.c`
-- **Concept:** Abstracting OS-specific APIs.
-- **Learning Objective:** Understand how to support multiple platforms (POSIX and Windows).
-- **Teaching Point:** Discuss terminal "raw mode". Why is it necessary for features like arrow-key navigation and command history?
+- **Concept:** Abstracting OS-specific APIs into a unified interface.
+- **Learning Objective:** Understand how to support multiple platforms (POSIX and Windows) by mapping disparate system calls to a common internal API.
+- **Teaching Point:** Discuss the differences between POSIX (`open`, `isatty`, `strcasecmp`) and Win32 (`_open`, `_isatty`, `_stricmp`). How do macros like `#define open _open` create a seamless developer experience?
+- **File Permissions**: Explain how Windows requires specific mode flags like `_S_IREAD` and `_S_IWRITE` to ensure database files are not created in a "Read-Only" state, which can cause subtle `EACCES` (Access Denied) errors.
 
 ### 5. Query Compilation (The SQL Parser)
 **Files:** `src/statement.c`
@@ -50,9 +51,9 @@ This project is a "white-box" implementation of a relational database, designed 
 **Goal:** Add a search feature to the command history.
 - **Tasks:** Modify `src/os_portability.c` to support `Ctrl-R` search through the `History` struct.
 
-### Exercise D: New Meta-Commands
-**Goal:** Add a `.stats` command to show Pager statistics.
-- **Tasks:** Implement a command that prints `num_pages`, `num_pages_in_memory`, and `timer` value to show the database's internal state.
+### Exercise D: Portable File Deletion
+**Goal:** Add a portable `db_delete_file(const char* filename)` function.
+- **Tasks:** Implement this in `os_portability.c` using `unlink` for Linux and `_unlink` for Windows, and use it in `tests/unit_tests.c`.
 
 ---
 
@@ -64,6 +65,6 @@ Teach students to use the included Python-based test runner for 100% consistency
 # Run the automated test suite
 meson test -v -C build
 
-# Check for memory leaks
+# Check for memory leaks (Linux)
 valgrind --leak-check=full ./build/db test.db
 ```

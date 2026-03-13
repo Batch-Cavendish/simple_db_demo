@@ -2,11 +2,11 @@
 #include "btree.h"
 #include "database.h"
 #include "schema.h"
+#include "os_portability.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 typedef struct {
   char *tokens[128];
