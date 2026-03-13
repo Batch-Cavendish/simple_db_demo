@@ -34,7 +34,13 @@ This project is designed as a "white-box" implementation of a relational databas
 - **Learning Objective:** Understand how a **Catalog** stores table definitions, schemas, and root pointers.
 - **Teaching Point:** Why is Page 0 reserved for the Catalog? How do we handle bootstrapping a new database?
 
-### 6. Modern C Engineering (C23)
+### 6. Cross-Platform Portability
+**Files:** `include/os_portability.h`, `src/pager.c`
+- **Concept:** Operating systems have different APIs for the same fundamental tasks (e.g., File I/O).
+- **Learning Objective:** Understand how to use an **Abstraction Layer** to support multiple platforms (POSIX and Windows) from a single codebase.
+- **Teaching Point:** Discuss the difference between binary mode and text mode in file I/O. Why is `O_BINARY` necessary on Windows but not on Linux?
+
+### 7. Modern C Engineering (C23)
 - **Concept:** Using modern language features to build robust systems.
 - **Learning Objective:** 
     - **`[[nodiscard]]`**: Why is it critical for error-handling functions?
@@ -70,12 +76,12 @@ This project is designed as a "white-box" implementation of a relational databas
 
 ## Debugging & Testing
 
-Teach students to use the included test suite and `valgrind`:
+Teach students to use the included test suite and `valgrind`. The **Python-based test runner** ensures that tests behave identically on both Linux and Windows.
 
 ```bash
-# Run the automated test suite (Unit + Golden)
-make test
+# Run the automated test suite (Unit + Golden) via Meson
+meson test -v -C build
 
-# Check for memory leaks
-valgrind --leak-check=full ./db test.db
+# Check for memory leaks (Linux only)
+valgrind --leak-check=full ./build/db test.db
 ```

@@ -31,6 +31,7 @@ SimpleDB follows a classic, modular database architecture:
 The codebase is organized into modular components:
 
 - `include/common.h`: Shared constants and core type definitions.
+- `include/os_portability.h`: Cross-platform abstraction for file I/O (POSIX/Windows).
 - `include/pager.h` / `src/pager.c`: Disk I/O management and page-based buffer pool.
 - `include/btree.h` / `src/btree.c`: B-Tree implementation and node manipulation.
 - `include/database.h` / `src/database.c`: High-level database, catalog, and cursor management.
@@ -42,27 +43,29 @@ The codebase is organized into modular components:
 
 -   **Language**: C23 (ISO/IEC 9899:2024).
 -   **Key Features**: standardized attributes (`[[nodiscard]]`), fixed-underlying-type enums, and `nullptr`.
+-   **Platform Support**: Linux (GCC/Clang) and Windows (LLVM 21).
 -   **Storage Format**: Custom binary format using 4096-byte pages.
--   **Build System**: GNU Makefile.
+-   **Build System**: Meson + Ninja.
+-   **Testing**: Python-based unified test runner for cross-platform consistency.
 
 ## Usage
 
-### Quick Start
+### Quick Start (Meson)
 
-1. **Build the project**:
+1. **Setup and Build**:
    ```bash
-   make
+   meson setup build
+   meson compile -C build
    ```
 
 2. **Run the database**:
    ```bash
-   make run
-   # Or manually: ./db mydb.db
+   ./build/db mydb.db
    ```
 
 3. **Run tests**:
    ```bash
-   make test
+   meson test -v -C build
    ```
 
 4. **Run performance benchmarks**:
@@ -126,11 +129,12 @@ db > .exit
 ### Examples
 You can find more example SQL scripts in the `examples/` directory. To run an example:
 ```bash
-./db mydb.db < examples/01_create_and_insert.sql
+./build/db mydb.db < examples/01_create_and_insert.sql
 ```
 
 ## Educational Insights
 
+-   **Cross-Platform Portability**: The use of `os_portability.h` demonstrates how to abstract operating system differences (like POSIX vs. Win32 file APIs). It ensures consistent database behavior, such as using `O_BINARY` on Windows to prevent data corruption during disk I/O.
 -   **Compiler vs. VM**: By separating `prepare_statement` from `execute_statement`, the code demonstrates how databases decouple parsing ("what to do") from execution ("how to do it").
 -   **Buffer Pool Management**: The `Pager` implements an LRU eviction policy. It "pins" pages during use to prevent corruption and only writes "dirty" (modified) pages back to disk, teaching the importance of I/O optimization.
 -   **B-Tree Internals**: The project now supports full B-Tree growth, including internal node splitting, demonstrating how databases maintain performance ($O(\log n)$) regardless of data size.

@@ -1,13 +1,13 @@
 #include "btree.h"
 #include "common.h"
 #include "database.h"
+#include "os_portability.h"
 #include "pager.h"
 #include "statement.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define TEST_FILE "test.db"
 

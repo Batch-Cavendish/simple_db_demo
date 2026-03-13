@@ -1,3 +1,9 @@
+# Meson Build
+build/
+meson-logs/
+meson-private/
+meson-info/
+
 # Executables
 db
 *.exe
@@ -8,9 +14,9 @@ db
 *.obj
 
 # Database Files
-*.sql
 *.sqlite
 *.db
+!tests/**/*.sql
 
 # System Files
 .DS_Store
@@ -24,7 +30,3 @@ output_select.txt
 *.log
 /.cache
 
-# AI Files
-ROADMAP.md
-tasks.md
-GEMINI.md

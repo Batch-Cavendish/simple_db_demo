@@ -1,12 +1,10 @@
 #include "pager.h"
-#include <fcntl.h>
+#include "os_portability.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 Pager *pager_open(const char *filename) {
-  int fd = open(filename, O_RDWR | O_CREAT, S_IWUSR | S_IRUSR);
+  int fd = open(filename, DB_OPEN_FLAGS, S_IWUSR | S_IRUSR);
   if (fd == -1) {
     printf("Unable to open file\n");
     exit(EXIT_FAILURE);

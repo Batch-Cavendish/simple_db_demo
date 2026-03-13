@@ -11,6 +11,7 @@
 - **Type Safety**: Enums use fixed underlying types (e.g., `enum : uint8_t`) for stable binary layouts.
 - **Readability**: Uses `nullptr` for type-safe null pointers.
 - **Invariants**: Uses `static_assert` to enforce architectural constraints like `PAGE_SIZE` at compile time.
+- **Cross-Platform**: Uses `include/os_portability.h` to abstract POSIX/Win32 file I/O. Supports **LLVM 21** on Windows.
 
 ## SQL Parser
 - **Tokenizer:** `consume_token_ctx` handles whitespace, parentheses, commas, equals, `>`, `<`, and semicolons. It manages an internal `PrepareContext` that tracks up to 128 tokens per statement.
@@ -26,6 +27,6 @@
 - **Memory Management**: Statements use the `{}` empty initializer. Resources are managed via a centralized `free_statement` function to prevent leaks in both preparation and execution stages. `PrepareContext` ensures all consumed tokens are freed.
 
 ## Verification Workflow
-- Use `make test` to run both unit tests (`assert`-based) and golden tests (shell-based output comparison).
-- Run `python3 tests/performance_test.py` to verify $O(\log n)$ vs $O(n)$ performance.
-- Always verify with `make` to ensure C23 compatibility.
+- **Meson:** Use `meson setup build`, `meson compile -C build`, and `meson test -v -C build` for building and testing. This uses the **Python-based unified test runner** for consistency across Linux and Windows.
+- **Performance:** Run `python3 tests/performance_test.py` to verify $O(\log n)$ vs $O(n)$ performance.
+- Always verify with `meson` to ensure C23 compatibility.
