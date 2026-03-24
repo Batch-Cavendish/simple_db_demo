@@ -1,7 +1,7 @@
 #include "schema.h"
 #include "statement.h"
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 void serialize_field(Schema *schema, uint32_t field_idx, void *val,
                      void *dest) {
@@ -21,25 +21,25 @@ void deserialize_field(Schema *schema, uint32_t field_idx, void *src,
 }
 
 void serialize_row(Schema *schema, struct Statement *s, void *dest) {
-    for (uint32_t i = 0; i < schema->num_fields; i++) {
-        if (schema->fields[i].type == FIELD_INT) {
-            serialize_field(schema, i, &s->insert_values[i], dest);
-        } else {
-            serialize_field(schema, i, s->insert_strings[i], dest);
-        }
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    if (schema->fields[i].type == FIELD_INT) {
+      serialize_field(schema, i, &s->insert_values[i], dest);
+    } else {
+      serialize_field(schema, i, s->insert_strings[i], dest);
     }
+  }
 }
 
 void deserialize_row(Schema *schema, void *src, struct Statement *s) {
-    for (uint32_t i = 0; i < schema->num_fields; i++) {
-        if (schema->fields[i].type == FIELD_INT) {
-            deserialize_field(schema, i, src, &s->insert_values[i]);
-        } else {
-            // NOTE: This assumes s->insert_strings[i] is already allocated if needed,
-            // or we use a fixed buffer. For SELECT/box mode, we usually use local buffers.
-            // In Statement, they are pointers.
-        }
+  for (uint32_t i = 0; i < schema->num_fields; i++) {
+    if (schema->fields[i].type == FIELD_INT) {
+      deserialize_field(schema, i, src, &s->insert_values[i]);
+    } else {
+      // NOTE: This assumes s->insert_strings[i] is already allocated if needed,
+      // or we use a fixed buffer. For SELECT/box mode, we usually use local
+      // buffers. In Statement, they are pointers.
     }
+  }
 }
 
 uint32_t hash_string(const char *str) {

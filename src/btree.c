@@ -90,18 +90,20 @@ void initialize_internal_node(void *node) {
 }
 
 static void leaf_node_move_cells(void *dest_node, uint32_t dest_cell_num,
-                                void *src_node, uint32_t src_cell_num,
-                                uint32_t num_cells, Schema *schema) {
-  if (num_cells == 0) return;
+                                 void *src_node, uint32_t src_cell_num,
+                                 uint32_t num_cells, Schema *schema) {
+  if (num_cells == 0)
+    return;
   memcpy(leaf_node_cell(dest_node, dest_cell_num, schema),
          leaf_node_cell(src_node, src_cell_num, schema),
          num_cells * leaf_node_cell_size(schema));
 }
 
 static void internal_node_move_cells(void *dest_node, uint32_t dest_cell_num,
-                                    void *src_node, uint32_t src_cell_num,
-                                    uint32_t num_cells) {
-  if (num_cells == 0) return;
+                                     void *src_node, uint32_t src_cell_num,
+                                     uint32_t num_cells) {
+  if (num_cells == 0)
+    return;
   memcpy(internal_node_cell(dest_node, dest_cell_num),
          internal_node_cell(src_node, src_cell_num),
          num_cells * INTERNAL_NODE_CELL_SIZE);
@@ -216,7 +218,8 @@ Cursor *find_node(Database *db, uint32_t table_index, uint32_t pg,
   }
 }
 
-void create_new_root(Database *db, uint32_t table_index, uint32_t right_child_pg) {
+void create_new_root(Database *db, uint32_t table_index,
+                     uint32_t right_child_pg) {
   uint32_t root_pg = db->catalog.tables[table_index].root_page_num;
   void *root = get_page(db->pager, root_pg);
   void *right_child = get_page(db->pager, right_child_pg);
@@ -240,8 +243,8 @@ void create_new_root(Database *db, uint32_t table_index, uint32_t right_child_pg
   mark_page_dirty(db->pager, left_child_pg);
 }
 
-void internal_node_insert(Database *db, uint32_t table_index, uint32_t parent_pg,
-                          uint32_t child_pg);
+void internal_node_insert(Database *db, uint32_t table_index,
+                          uint32_t parent_pg, uint32_t child_pg);
 
 void internal_node_split_and_insert(Database *db, uint32_t table_index,
                                     uint32_t parent_pg, uint32_t child_pg) {
@@ -259,9 +262,10 @@ void internal_node_split_and_insert(Database *db, uint32_t table_index,
   // Split keys and children between old and new internal nodes
   *internal_node_num_keys(new_node) = num_keys - split_idx - 1;
   internal_node_move_cells(new_node, 0, old_node, split_idx + 1,
-                          *internal_node_num_keys(new_node));
+                           *internal_node_num_keys(new_node));
   *internal_node_right_child(new_node) = *internal_node_right_child(old_node);
-  *internal_node_right_child(old_node) = *internal_node_child(old_node, split_idx);
+  *internal_node_right_child(old_node) =
+      *internal_node_child(old_node, split_idx);
   *internal_node_num_keys(old_node) = split_idx;
 
   // Update parents of children that moved
@@ -271,7 +275,8 @@ void internal_node_split_and_insert(Database *db, uint32_t table_index,
     mark_page_dirty(db->pager, cpg);
   }
 
-  uint32_t child_max_key = get_node_max_key(db, table_index, get_page(db->pager, child_pg));
+  uint32_t child_max_key =
+      get_node_max_key(db, table_index, get_page(db->pager, child_pg));
   if (child_max_key < get_node_max_key(db, table_index, old_node)) {
     internal_node_insert(db, table_index, old_pg, child_pg);
   } else {
@@ -284,13 +289,14 @@ void internal_node_split_and_insert(Database *db, uint32_t table_index,
     uint32_t p_pg = *node_parent(old_node);
     void *parent = get_page(db->pager, p_pg);
     uint32_t idx = internal_node_find_child(parent, old_max_key);
-    *internal_node_key(parent, idx) = get_node_max_key(db, table_index, old_node);
+    *internal_node_key(parent, idx) =
+        get_node_max_key(db, table_index, old_node);
     internal_node_insert(db, table_index, p_pg, new_pg);
   }
 }
 
-void internal_node_insert(Database *db, uint32_t table_index, uint32_t parent_pg,
-                          uint32_t child_pg) {
+void internal_node_insert(Database *db, uint32_t table_index,
+                          uint32_t parent_pg, uint32_t child_pg) {
   void *parent = get_page(db->pager, parent_pg);
   void *child = get_page(db->pager, child_pg);
   uint32_t child_max_key = get_node_max_key(db, table_index, child);
@@ -308,7 +314,8 @@ void internal_node_insert(Database *db, uint32_t table_index, uint32_t parent_pg
   if (child_max_key > get_node_max_key(db, table_index, right_child)) {
     // New child becomes the new right child
     *internal_node_child(parent, num_keys) = right_child_pg;
-    *internal_node_key(parent, num_keys) = get_node_max_key(db, table_index, right_child);
+    *internal_node_key(parent, num_keys) =
+        get_node_max_key(db, table_index, right_child);
     *internal_node_right_child(parent) = child_pg;
   } else {
     // Shift keys/children to make room
@@ -340,24 +347,27 @@ void leaf_node_split_and_insert(Cursor *c, uint32_t key, Statement *s) {
   // Use a temporary buffer to avoid corruption during split
   void *temp_cells = malloc(PAGE_SIZE);
   uint32_t total_cells = max_cells + 1;
-  
+
   for (uint32_t i = 0; i < total_cells; i++) {
-    void *dest = (char*)temp_cells + i * leaf_node_cell_size(schema);
+    void *dest = (char *)temp_cells + i * leaf_node_cell_size(schema);
     if (i == c->cell_num) {
-      *(uint32_t*)dest = key;
-      serialize_row(schema, s, (char*)dest + sizeof(uint32_t));
+      *(uint32_t *)dest = key;
+      serialize_row(schema, s, (char *)dest + sizeof(uint32_t));
     } else {
       uint32_t src_idx = (i > c->cell_num) ? i - 1 : i;
-      memcpy(dest, leaf_node_cell(old_node, src_idx, schema), leaf_node_cell_size(schema));
+      memcpy(dest, leaf_node_cell(old_node, src_idx, schema),
+             leaf_node_cell_size(schema));
     }
   }
 
   // Copy from temp back to old and new nodes
   *leaf_node_num_cells(old_node) = split_idx;
-  memcpy(leaf_node_cell(old_node, 0, schema), temp_cells, split_idx * leaf_node_cell_size(schema));
-  
+  memcpy(leaf_node_cell(old_node, 0, schema), temp_cells,
+         split_idx * leaf_node_cell_size(schema));
+
   *leaf_node_num_cells(new_node) = total_cells - split_idx;
-  memcpy(leaf_node_cell(new_node, 0, schema), (char*)temp_cells + split_idx * leaf_node_cell_size(schema), 
+  memcpy(leaf_node_cell(new_node, 0, schema),
+         (char *)temp_cells + split_idx * leaf_node_cell_size(schema),
          *leaf_node_num_cells(new_node) * leaf_node_cell_size(schema));
 
   free(temp_cells);
@@ -371,7 +381,8 @@ void leaf_node_split_and_insert(Cursor *c, uint32_t key, Statement *s) {
     void *parent = get_page(c->db->pager, parent_pg);
     uint32_t old_node_idx = internal_node_find_child(parent, old_max_key);
     if (old_node_idx < *internal_node_num_keys(parent)) {
-      *internal_node_key(parent, old_node_idx) = get_node_max_key(c->db, c->table_index, old_node);
+      *internal_node_key(parent, old_node_idx) =
+          get_node_max_key(c->db, c->table_index, old_node);
       mark_page_dirty(c->db->pager, parent_pg);
     }
     internal_node_insert(c->db, c->table_index, parent_pg, new_pg);
@@ -387,7 +398,8 @@ void leaf_node_insert(Cursor *c, uint32_t key, Statement *s) {
     return;
   }
   if (c->cell_num < num) {
-    leaf_node_move_cells(node, c->cell_num + 1, node, c->cell_num, num - c->cell_num, schema);
+    leaf_node_move_cells(node, c->cell_num + 1, node, c->cell_num,
+                         num - c->cell_num, schema);
   }
   *leaf_node_num_cells(node) += 1;
   *leaf_node_key(node, c->cell_num, schema) = key;
@@ -399,8 +411,10 @@ void leaf_node_delete(Cursor *c) {
   void *node = get_page(c->db->pager, c->page_num);
   uint32_t num = *leaf_node_num_cells(node);
   Schema *schema = &c->db->catalog.tables[c->table_index].schema;
-  if (c->cell_num >= num) return;
-  leaf_node_move_cells(node, c->cell_num, node, c->cell_num + 1, num - c->cell_num - 1, schema);
+  if (c->cell_num >= num)
+    return;
+  leaf_node_move_cells(node, c->cell_num, node, c->cell_num + 1,
+                       num - c->cell_num - 1, schema);
   *leaf_node_num_cells(node) -= 1;
   mark_page_dirty(c->db->pager, c->page_num);
 }
